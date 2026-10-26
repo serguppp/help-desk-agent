@@ -1,5 +1,7 @@
 import json
 import os
+from datetime import datetime
+from decimal import Decimal
 
 from google import genai
 from google.genai.interactions import (
@@ -8,14 +10,18 @@ from google.genai.interactions import (
     ToolParam,
 )
 
-from .policies import PolicySections, search_policies
+from .booking import get_booking
+from .config import TIME_NOW
+from .policies import search_policies
+from .refund import calculate_refund
 
 TOOLS: list[ToolParam] = [
     {
         "type": "function",
         "name": "search_policies",
         "description": (
-            "Search CityWheels policies using a short English keyword or phrase. Correct obvious spelling mistakes."
+            "Search CityWheels policies using a short English "
+            "keyword or phrase. Correct obvious spelling mistakes."
         ),
         "parameters": {
             "type": "object",
@@ -23,43 +29,104 @@ TOOLS: list[ToolParam] = [
                 "query": {
                     "type": "string",
                     "description": (
-                        "A short English search phrase, for example: dog, open, booking fee."
+                        "A short English search phrase, "
+                        "for example: dog, open, booking fee."
                     ),
                 },
             },
             "required": ["query"],
         },
     },
+    {
+        "type": "function",
+        "name": "get_booking",
+        "description": (
+            "Retrieve a CityWheels booking by its ID. "
+            "Returns booking details or a not-found result."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "type": "string",
+                    "description": "Booking ID, for example CW-1002.",
+                },
+            },
+            "required": ["booking_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "calculate_refund",
+        "description": (
+            "Calculate the total refund for cancelling a booking now. "
+            "The total includes the refundable rental price and deposit. "
+            "Uses the fixed current time configured for CityWheels. "
+            "Does not cancel or modify the booking."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "type": "string",
+                    "description": "Booking ID, for example CW-1002.",
+                },
+            },
+            "required": ["booking_id"],
+        },
+    },
 ]
 
 SYSTEM_INSTRUCTION = (
     "You are the CityWheels help desk assistant. "
-    "Use search_policies before answering policy questions. "
-    "Answer only using information retrieved from the policies. "
-    "Never invent facts or prices. "
-    "If a search does not provide enough information, "
-    "you may try another short English search phrase. "
-    "If information is unavailable or the question is unrelated "
-    "to CityWheels, say so and direct the customer to the staff."
+    "Answer only using information retrieved through the available tools. "
+    "Use search_policies for business rules and payment or refund methods. "
+    "Use short English search phrases and correct obvious spelling mistakes. "
+    "Use get_booking for booking details. "
+    "Use calculate_refund for all booking-specific refund amounts. "
+    "Never calculate refund amounts yourself. "
+    "Never invent booking details, prices, or facts. "
+    "For unknown bookings, state that the booking was not found. "
+    "Do not claim that a booking was cancelled or changed. "
+    "Do not guarantee exceptional weather refunds; staff decide those cases. "
+    f"The fixed current time is {TIME_NOW.isoformat()}. "
+    "If a search is insufficient, you may try another search phrase. "
+    "If information is unavailable or unrelated to CityWheels, "
+    "say so and direct the customer to the staff."
 )
 
 
-def execute_tool(
-    name: str,
-    arguments: dict[str, object],
-) -> list[PolicySections] | dict[str, str]:
-    if name != "search_policies":
+def execute_tool(name: str, arguments: dict[str, object]) -> object:
+    if name not in {"search_policies", "get_booking", "calculate_refund"}:
         return {"error": "unknown_tool"}
 
-    query = arguments.get("query")
+    argument_name = "query" if name == "search_policies" else "booking_id"
+    value = arguments.get(argument_name)
 
-    if set(arguments) != {"query"} or not isinstance(query, str):
-        return {"error": "Expected one string argument: query"}
+    if set(arguments) != {argument_name} or not isinstance(value, str):
+        return {"error": f"Expected one string argument: {argument_name}"}
 
     try:
-        return search_policies(query)
+        if name == "search_policies":
+            return search_policies(value)
+
+        if name == "get_booking":
+            return get_booking(value)
+
+        return calculate_refund(value)
+
     except ValueError as error:
         return {"error": str(error)}
+
+
+def serialize_tool_value(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, Decimal):
+        return str(value)
+
+    raise TypeError(f"Cannot serialize {type(value).__name__}")
 
 
 def run_agent(
@@ -67,6 +134,7 @@ def run_agent(
     client: genai.Client,
     model: str,
     max_steps: int = 5,
+    debug: bool = False,
 ) -> str:
     if not question.strip():
         raise ValueError("Question must not be empty")
@@ -93,8 +161,9 @@ def run_agent(
             if step.type != "function_call":
                 continue
 
-            print("Executing tool:", step.name)
-            print("Arguments:", step.arguments)
+            if debug:
+                print("Executing tool:", step.name)
+                print("Arguments:", step.arguments)
 
             result = execute_tool(step.name, step.arguments)
 
@@ -106,7 +175,11 @@ def run_agent(
                     "result": [
                         {
                             "type": "text",
-                            "text": json.dumps(result, ensure_ascii=False),
+                            "text": json.dumps(
+                                result,
+                                ensure_ascii=False,
+                                default=serialize_tool_value,
+                            ),
                         }
                     ],
                 }
@@ -150,12 +223,19 @@ def main() -> None:
     if not model:
         raise ValueError("GEMINI_MODEL is not configured")
 
-    question = input("You: ").strip()
-
     with genai.Client(api_key=api_key) as client:
-        answer = run_agent(question, client, model)
+        while True:
+            question = input("You: ").strip()
 
-    print("Agent:", answer)
+            if question.lower() in {"exit", "quit"}:
+                break
+
+            if not question:
+                continue
+
+            answer = run_agent(question, client, model)
+            print("Agent:", answer)
+            print()
 
 
 if __name__ == "__main__":

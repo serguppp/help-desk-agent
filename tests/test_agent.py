@@ -98,3 +98,11 @@ def test_agent_stops_at_step_limit(monkeypatch):
     assert fake_search.call_count == 3
     assert "step limit" in answer
     assert "contact the staff" in answer
+
+
+def test_agent_exposes_all_required_tools():
+    names = [tool.get("name") for tool in llm.TOOLS]
+
+    assert "search_policies" in names
+    assert "get_booking" in names
+    assert "calculate_refund" in names
