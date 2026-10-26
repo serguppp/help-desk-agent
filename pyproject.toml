@@ -3,7 +3,9 @@ name = "citywheels-helpdesk"
 version = "0.1.0"
 description = "Command-line help desk agent for CityWheels."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "google-genai>=2.33.0",
+]
 
 [dependency-groups]
 dev = [
