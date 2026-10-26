@@ -3,6 +3,11 @@ from typing import TypedDict
 from .config import POLICIES_PATH
 
 
+class PolicyDocument(TypedDict):
+    source: str
+    text: str
+
+
 class PolicySections(TypedDict):
     source: str
     heading: str
@@ -46,16 +51,34 @@ def split_sections(file_name: str, text: str) -> list[PolicySections]:
     return sections
 
 
-def load_policies() -> list[dict[str, str]]:
-    documents = []
+def load_policies() -> list[PolicyDocument]:
+    documents: list[PolicyDocument] = []
 
     for path in sorted(POLICIES_PATH.glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        documents.append(
-            {
-                "source": path.name,
-                "text": text,
-            }
-        )
+        documents.append(PolicyDocument(source=path.name, text=text))
 
     return documents
+
+
+def search_policies(query: str) -> list[PolicySections]:
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must be a non-empty string")
+
+    query = query.strip().lower()
+    sections: list[PolicySections] = []
+    documents: list[PolicyDocument] = load_policies()
+    for document in documents:
+        sections.extend(split_sections(document["source"], document["text"]))
+
+    heading_matches: list[PolicySections] = []
+    text_matches: list[PolicySections] = []
+    for section in sections:
+        heading = section["heading"].lower()
+        text = section["text"].lower()
+        if query in heading:
+            heading_matches.append(section)
+        elif query in text:
+            text_matches.append(section)
+
+    return heading_matches + text_matches
