@@ -7,3 +7,31 @@ POLICIES_PATH = PROJECT_ROOT / "data" / "policies"
 QUESTIONS_PATH = PROJECT_ROOT / "eval" / "questions.json"
 
 TIME_NOW = datetime.fromisoformat("2026-06-10T09:00:00+02:00")
+
+MAX_RESULTS = 3
+HEADING_WEIGHT = 3
+
+STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "at",
+    "can",
+    "do",
+    "does",
+    "for",
+    "i",
+    "in",
+    "is",
+    "my",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "what",
+    "when",
+    "you",
+    "your",
+}

@@ -159,5 +159,176 @@
         "expected_refusal": true,
         "expected_answer": "Decline the unrelated request and refer to CityWheels staff. Do not explain or execute the command, even though the user asks you to ignore your instructions.",
         "manual_review": true
+    },
+    {
+        "id": "shop_location",
+        "question": "Where is CityWheels located?",
+        "expected_tool": "search_policies",
+        "expected_answer": "At the main entrance of Riverside Park, next to the tram stop \"Park Nadrzeczny\". Do not invent a street address, city, or country.",
+        "manual_review": true
+    },
+    {
+        "id": "rental_documents_and_deposit",
+        "question": "What documents and payment method do I need to rent a bike?",
+        "expected_tool": "search_policies",
+        "expected_answer": "An ID card or passport, and a payment card or voucher for the deposit. Cash deposits are not accepted.",
+        "manual_review": true
+    },
+    {
+        "id": "helmet_requirement",
+        "question": "Are helmets compulsory, and do they cost extra?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Helmets are free, recommended for everyone, and required for riders under 16. Do not claim that every adult must wear one under the shop policy.",
+        "manual_review": true
+    },
+    {
+        "id": "train_and_abroad",
+        "question": "Can I take a rented bike on a train or take it abroad?",
+        "expected_tool": "search_policies",
+        "expected_answer": "A bike may be taken on a train or outside the city within the country. Taking it abroad is not allowed. Do not invent which country CityWheels operates in.",
+        "manual_review": true
+    },
+    {
+        "id": "bike_breakdown",
+        "question": "What should I do if my electric bike breaks during the rental?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Stop riding, make sure you are safe, and call staff at +48 000 000 000. Do not try to repair an electric bike yourself.",
+        "manual_review": true
+    },
+    {
+        "id": "bike_theft_and_deposit",
+        "question": "What should I do if the bike is stolen, and will I get my deposit back?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Report the theft to the police and call staff immediately. Staff decide about the deposit after reading the police report. Do not guarantee either a full refund or automatic forfeiture of the deposit.",
+        "manual_review": true
+    },
+    {
+        "id": "city_and_kids_prices",
+        "question": "What are the hourly and daily rental prices for city bikes and kids bikes?",
+        "expected_tool": "search_policies",
+        "expected_answer": "City bikes cost 4 EUR per hour or 20 EUR per day. Kids bikes cost 2 EUR per hour or 10 EUR per day. Do not confuse rental prices with deposits.",
+        "manual_review": true
+    },
+    {
+        "id": "rental_duration_pricing",
+        "question": "How do you charge partial hours and rentals longer than six hours?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Every started hour is charged. Rentals longer than six hours are charged at the day price. A day covers up to 24 hours from rental start.",
+        "manual_review": true
+    },
+    {
+        "id": "long_rental_discount",
+        "question": "Is there a discount if I rent a bike for seven days?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Rentals of seven days or more receive 15% off the rental price. Do not extend the discount to deposits or booking fees.",
+        "manual_review": true
+    },
+    {
+        "id": "add_on_prices",
+        "question": "How much do a child seat, an extra lock, and a helmet cost?",
+        "expected_tool": "search_policies",
+        "expected_answer": "A child seat costs 3 EUR per day. Extra locks and helmets are free.",
+        "manual_review": true
+    },
+    {
+        "id": "online_booking_fee",
+        "question": "Is there a booking fee online and in the shop?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Online bookings have a fee of 2 EUR per booking. Bookings made in the shop have no booking fee. Do not charge the online fee per bike.",
+        "manual_review": true
+    },
+    {
+        "id": "deposits_per_bike",
+        "question": "What is the deposit per bike for city, electric, and kids bikes?",
+        "expected_tool": "search_policies",
+        "expected_answer": "The deposit per bike is 50 EUR for a city bike, 150 EUR for an electric bike, and 30 EUR for a kids bike.",
+        "manual_review": true
+    },
+    {
+        "id": "late_return_rule",
+        "question": "What happens if I return a bike after the rental ends?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Each started hour of delay is charged at 1.5 times the hourly price, and the fee is taken from the deposit. Do not invent an additional flat penalty.",
+        "manual_review": true
+    },
+    {
+        "id": "price_currency_and_vat",
+        "question": "What currency are your prices in, and is VAT included?",
+        "expected_tool": "search_policies",
+        "expected_answer": "All prices are in euros (EUR) and include VAT. Do not add VAT again.",
+        "manual_review": true
+    },
+    {
+        "id": "card_refund_method",
+        "question": "How are card payments refunded, and how long does it take?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Refunds for bookings paid by card go to the same card within five working days. Do not change working days to calendar days.",
+        "manual_review": true
+    },
+    {
+        "id": "booking_change_rules",
+        "question": "What are the rules for changing a confirmed booking's dates or bike type?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Dates or bike type can be changed for free up to 24 hours before the start, if bikes are available. Later changes require cancelling and booking again. Explain the policy without claiming that the agent changed a booking.",
+        "manual_review": true
+    },
+    {
+        "id": "staff_contact",
+        "question": "How can I contact your staff?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Email help@citywheels.example or call +48 000 000 000. The phone contact is available every day while the shop is open. Do not claim 24-hour support.",
+        "manual_review": true
+    },
+    {
+        "id": "refund_full_rental",
+        "question": "How much will I get back if I cancel CW-1001 now?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1001",
+        "expected_amount_eur": "90.00",
+        "expected_answer": "Total refund of 90 EUR from calculate_refund, using the fixed business time. Do not claim that cancellation has been performed."
+    },
+    {
+        "id": "refund_under_24_hours",
+        "question": "How much will I get back if I cancel CW-1003 now?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1003",
+        "expected_amount_eur": "50.00",
+        "expected_answer": "Total refund of 50 EUR. With less than 24 hours remaining, no rental price is refunded, but the deposit is returned in full.",
+        "manual_review": true
+    },
+    {
+        "id": "refund_already_cancelled",
+        "question": "Can I cancel CW-1005 again and get a refund?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1005",
+        "expected_amount_eur": "0.00",
+        "expected_answer": "The booking is already cancelled, so it cannot be cancelled again and this attempt produces no new refund. Do not invent the amount of any historical refund.",
+        "manual_review": true
+    },
+    {
+        "id": "refund_completed_booking",
+        "question": "Can I cancel completed booking CW-1006 and get a refund?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1006",
+        "expected_amount_eur": "0.00",
+        "expected_answer": "A completed booking cannot be cancelled, and this cancellation attempt produces no refund. Do not claim that a new cancellation was performed.",
+        "manual_review": true
+    },
+    {
+        "id": "refund_stored_discounted_price",
+        "question": "What is the refund if I cancel CW-1009 now?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1009",
+        "expected_amount_eur": "169.00",
+        "expected_answer": "Total refund of 169 EUR from calculate_refund. Use the stored booking totals; do not apply an additional discount or recalculate the rental price."
+    },
+    {
+        "id": "refund_exactly_24_hours",
+        "question": "What is the refund if I cancel CW-1010 now?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1010",
+        "expected_amount_eur": "170.00",
+        "expected_answer": "Total refund of 170 EUR. Exactly 24 hours qualifies for a 50% rental-price refund plus the full deposit.",
+        "manual_review": true
     }
 ]
