@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from typing import TypedDict
 
 from google import genai
+from google.genai import types
 from google.genai._gaos.lib.compat_errors import (
     APIError as InteractionsAPIError,
 )
@@ -121,20 +122,20 @@ def execute_tool(name: str, arguments: dict[str, object]) -> object:
     argument_name = "query" if name == "search_policies" else "booking_id"
     value = arguments.get(argument_name)
 
-    if set(arguments) != {argument_name} or not isinstance(value, str):
+    if (
+        set(arguments) != {argument_name}
+        or not isinstance(value, str)
+        or not value.strip()
+    ):
         return {"error": f"Expected one string argument: {argument_name}"}
 
-    try:
-        if name == "search_policies":
-            return search_policies(value)
+    if name == "search_policies":
+        return search_policies(value)
 
-        if name == "get_booking":
-            return get_booking(value)
+    if name == "get_booking":
+        return get_booking(value)
 
-        return calculate_refund(value)
-
-    except ValueError as error:
-        return {"error": str(error)}
+    return calculate_refund(value)
 
 
 def serialize_tool_value(value: object) -> str:
@@ -152,7 +153,7 @@ def run_agent(
     client: genai.Client,
     model: str,
     max_steps: int = 5,
-    debug: bool = True,
+    debug: bool = False,
     trace: list[ToolTrace] | None = None,
 ) -> str:
     if not question.strip():
@@ -173,6 +174,13 @@ def run_agent(
     for step_index in range(max_steps):
         if not isinstance(interaction, Interaction):
             raise TypeError("Expected a non-streaming response")
+
+        has_tool_calls = any(
+            step.type == "function_call" for step in interaction.steps or []
+        )
+
+        if has_tool_calls and step_index == max_steps - 1:
+            break
 
         tool_results: list[FunctionResultStepParam] = []
 
@@ -223,9 +231,6 @@ def run_agent(
 
             return interaction.output_text
 
-        if step_index == max_steps - 1:
-            break
-
         if not interaction.id:
             raise RuntimeError("Missing interaction ID")
 
@@ -256,7 +261,13 @@ def main() -> None:
         raise SystemExit("GEMINI_MODEL is not configured")
 
     try:
-        with genai.Client(api_key=api_key) as client:
+        with genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                timeout=30_000,
+                retry_options=types.HttpRetryOptions(attempts=0),
+            ),
+        ) as client:
             while True:
                 question = input("You: ").strip()
 

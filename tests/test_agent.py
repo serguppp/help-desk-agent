@@ -104,7 +104,7 @@ def test_agent_stops_at_step_limit(monkeypatch):
     )
 
     assert client.interactions.create.call_count == 3
-    assert fake_search.call_count == 3
+    assert fake_search.call_count == 2
     assert "step limit" in answer
     assert "contact the staff" in answer
 
@@ -206,3 +206,13 @@ def test_agent_sends_tool_errors_back_to_model(tool_name, arguments):
 def test_serialization_rejects_unsupported_type():
     with pytest.raises(TypeError, match="Cannot serialize"):
         json.dumps(object(), default=llm.serialize_tool_value)
+
+
+def test_dispatcher_does_not_hide_invalid_booking_json(monkeypatch):
+    def broken_booking(_booking_id):
+        raise json.JSONDecodeError("Invalid JSON", "", 0)
+
+    monkeypatch.setattr(llm, "get_booking", broken_booking)
+
+    with pytest.raises(json.JSONDecodeError):
+        llm.execute_tool("get_booking", {"booking_id": "CW-1002"})

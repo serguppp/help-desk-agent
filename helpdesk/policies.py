@@ -54,7 +54,12 @@ def split_sections(file_name: str, text: str) -> list[PolicySections]:
 def load_policies() -> list[PolicyDocument]:
     documents: list[PolicyDocument] = []
 
-    for path in sorted(POLICIES_PATH.glob("*.md")):
+    paths = sorted(POLICIES_PATH.glob("*.md"))
+
+    if not paths:
+        raise FileNotFoundError("No CityWheels policy documents found")
+
+    for path in paths:
         text = path.read_text(encoding="utf-8")
         documents.append(PolicyDocument(source=path.name, text=text))
 

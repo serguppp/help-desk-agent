@@ -87,3 +87,13 @@ def test_search_matches_a_contiguous_phrase(monkeypatch):
 
     assert policies.search_policies("booking fee")
     assert policies.search_policies("fee booking") == []
+
+
+def test_load_policies_rejects_directory_without_documents(tmp_path, monkeypatch):
+    monkeypatch.setattr(policies, "POLICIES_PATH", tmp_path)
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="No CityWheels policy documents found",
+    ):
+        policies.load_policies()
