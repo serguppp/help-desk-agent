@@ -1,432 +1,206 @@
 # CityWheels Help Desk Agent
 
-## Overview
+## Run the project
 
-A command-line assistant for the fictional CityWheels bike rental shop.
-It answers questions about policies, prices, bookings, and cancellation
-refunds using the supplied Markdown documents and booking data.
-
-The LLM decides which tools to request. Python executes the tools and
-calculates booking-specific refund amounts. The application does not
-cancel bookings, modify reservations, or process payments.
-
-
-## Installation and usage
-
-Requirements:
-
-- Python 3.12
-- uv
-- Git, used by the evaluator to record the source commit
-- A Gemini API key and access to the configured model
-
-Run the following commands from the repository root.
-
-Install the locked dependencies:
+Requirements: Python 3.12+, uv, Git and a Gemini API key with access and remaining quota for the chosen model.
+Run these commands from the repository root:
 
 ```powershell
 uv sync --locked --dev
-```
-
-For a fresh checkout, create the local configuration:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and configure:
-
-```dotenv
-GEMINI_API_KEY=your_api_key
-GEMINI_MODEL=gemini-3.5-flash-lite
-```
-
-The real API key belongs only in the local environment or `.env`.
-The repository ignores `.env`; `.env.example` contains no real key.
-
-Start the CLI:
+Create `.env` once, then set `GEMINI_API_KEY` and `GEMINI_MODEL=gemini-3.5-flash-lite`.
+The key is read from the environment. `.env` is ignored; `.env.example` contains no real key.
 
 ```powershell
 uv run --locked --env-file .env python -u -m helpdesk.llm
-```
-
-Example questions:
-
-```text
-What is the status of CW-1002?
-How much will I get back if I cancel CW-1002?
-Can my 14-year-old rent an electric bike?
-```
-
-Enter `exit` or `quit` to leave. Empty input is ignored, and EOF or
-Ctrl+C exits gracefully.
-
-Each question currently starts an independent conversation. Follow-up
-questions must include the necessary context, such as the booking ID.
-
-## Architecture and technical decisions
-
-The application uses the Google Gen AI SDK directly through the
-Interactions API.
-
-| Module | Responsibility |
-| --- | --- |
-| `helpdesk/config.py` | File paths and fixed business time |
-| `helpdesk/booking.py` | Read and convert booking data |
-| `helpdesk/refund.py` | Calculate cancellation refunds |
-| `helpdesk/policies.py` | Load, split, and search policy documents |
-| `helpdesk/llm.py` | Tool declarations, dispatcher, agent loop, and CLI |
-| `eval/run_eval.py` | Run evaluation, check outputs, and generate reports |
-
-### Agent loop
-
-For each question:
-
-1. Send the question, system instruction, and tool declarations to Gemini.
-2. Inspect the response for function calls.
-3. Validate each requested tool name and its arguments.
-4. Execute only explicitly allowed Python functions.
-5. Serialize their results and return them using the corresponding
-   `call_id`.
-6. Continue through `previous_interaction_id` until the model returns
-   a final answer or the step limit is reached.
-
-Multiple tool calls in one response are supported.
-
-Each user question allows up to five model requests. If the model still
-requests tools on the fifth response, the agent stops and asks the user
-to contact staff.
-
-I implemented the tool-calling loop directly with the Gemini SDK.
-The workflow is linear, and keeping it explicit makes argument
-validation, tool execution, and the request limit easy to inspect
-and test.
-
-### Provider and model
-
-The recorded baseline uses:
-
-- Provider: Google Gemini API
-- Model: `gemini-3.5-flash-lite`
-- SDK: `google-genai` 2.33.0
-- API: Interactions
-
-I chose Gemini because it provided tool calling and was available
-for this project. The baseline uses gemini-3.5-flash-lite, which worked
-during development after a trial with another model returned a 503
-high-demand error.
-
-### Data representation
-
-Bookings use `TypedDict`, with explicit conversion of JSON values:
-
-- ISO timestamps become `datetime` values.
-- Monetary values become `Decimal`.
-- Dates and monetary values are serialized as strings in tool results.
-
-`TypedDict` keeps the structures simple and provides static checking.
-It does not perform runtime schema validation. I chose explicit conversion
-instead of introducing an additional application-level validation library.
-
-## Tools and business rules
-
-The supplied `README.md`, policies, and bookings are the sources of truth.
-
-### `get_booking`
-
-Reads `data/bookings.json`, converts its records, and finds an exact
-booking ID.
-
-An unknown ID returns a structured not-found result rather than raising
-an exception. Empty or non-string arguments are rejected.
-
-All records are converted before lookup. Consequently, an invalid record
-can prevent reading another booking.
-
-### `calculate_refund`
-
-The tool accepts only `booking_id`. The model cannot supply prices,
-refund rates, or a replacement current time.
-
-All calculations use the fixed business time:
-
-```text
-2026-06-10T09:00:00+02:00
-```
-
-For a booking with status `confirmed`:
-
-| Time before rental start | Rental-price refund |
-| --- | ---: |
-| At least 48 hours | 100% |
-| At least 24 hours but less than 48 | 50% |
-| Less than 24 hours | 0% |
-
-The deposit is added in full for an allowed cancellation. The booking fee
-is excluded.
-
-Bookings with status `in_progress`, `completed`, or `cancelled` cannot be
-cancelled and receive no refund from this cancellation attempt. This does
-not describe any historical refund.
-
-The stored rental price and deposit are booking totals. The calculation
-does not multiply them by the number of bikes or recalculate add-ons.
-
-For example, CW-1002 has 33 hours remaining:
-
-```text
-80 EUR × 50% + 300 EUR deposit = 340 EUR
-```
-
-`Decimal` avoids binary floating-point errors. The supplied policies do
-not define rounding for fractional cents, so no additional rounding rule
-has been invented.
-
-Refund methods come from the cancellation policy: rental refunds for
-voucher payments are vouchers, while deposits follow their original
-payment method. Exceptional storm refunds require a staff decision.
-
-The current tool returns a total rather than a structured breakdown of
-refund components and methods. The evaluation identified a weakness in
-how the model explains the voucher/deposit distinction.
-
-### `search_policies`
-
-The baseline intentionally uses a simple retrieval method:
-
-1. Read UTF-8 Markdown files from `data/policies`.
-2. Split them at `#` and `##` headings.
-3. Preserve introductory content, including the EUR/VAT statement.
-4. Match the complete, lowercased query as a contiguous substring.
-5. Return heading matches before body-only matches.
-
-Results contain the source filename, heading, and text. All matching
-sections are returned; there is no top-k ranking or tokenization yet.
-
-This was useful as an understandable baseline, but it is sensitive to
-wording. For example, `buy a bike` does not match `Do you sell bikes?`.
-
-## Instructions, validation, and error handling
-
-The system instruction requires the model to:
-
-- Answer using tool-provided information.
-- Use `calculate_refund` for booking-specific refund amounts.
-- Avoid invented details, prices, and facts.
-- Distinguish unrelated questions from relevant but undocumented topics.
-- Refer unanswered questions to staff.
-- Avoid claiming that bookings were changed or cancelled.
-- Avoid guaranteeing exceptional weather refunds.
-
-These are behavioral instructions, not guarantees. Evaluation is needed
-to check whether the model follows them.
-
-The dispatcher allows only the three declared tools and requires exactly
-one non-empty string argument. Unknown tools and invalid arguments return
-structured errors to the model.
-
-Data errors are kept separate from argument errors. In particular, invalid
-JSON is not converted into a misleading tool-argument error. A missing
-or empty policies directory raises a file error instead of looking like
-a successful search with no matches.
-
-The CLI handles timeouts, provider errors, common data errors, and empty
-model responses. Requests have a 30-second timeout, and automatic SDK
-retries are disabled. This is a per-request timeout, not a 30-second
-deadline for the entire agent loop.
-
-The tools are read-only and the dispatcher does not execute arbitrary
-code. However, booking IDs are not authentication, and this demonstration
-is not suitable for exposing real customer bookings without access control.
-
-## Tests
-
-Run all offline tests with one command:
-
-```powershell
 uv run --locked pytest -q
-```
-
-The current suite contains 120 passing tests, including parameterized
-cases. No API key or model connection is required.
-
-The offline tests cover:
-
-- Booking lookup, data conversion, invalid arguments, and file errors.
-- Refund rules, booking statuses, and the 24/48-hour boundaries.
-- Policy splitting and retrieval.
-- Agent tool execution, serialization, multiple calls, and step limits.
-- CLI error handling and evaluation reporting.
-
-Unit tests verify individual functions. Offline integration tests check
-file reads, refund calculations, and tool execution with a fake model.
-Real-model answer quality is evaluated separately.
-
-Ruff, formatting, mypy, and tests can also be run together:
-
-```powershell
 uv run --locked pre-commit run --all-files
 ```
 
-To enable the local commit hooks:
+The CLI accepts repeated questions. `exit`, `quit`, Ctrl+C or EOF exits; empty input is ignored.
+Questions do not share conversation history. Include a booking ID again when asking a follow-up.
+The assistant quotes hypothetical cancellations; it never modifies bookings or processes payments.
+
+Run a real evaluation on the current code, choosing a fresh output directory:
 
 ```powershell
-uv run --locked pre-commit install
+uv run --locked --env-file .env python -u -m eval.run_eval --model gemini-3.5-flash-lite --questions eval/questions.json --variant D-development-3.5 --output-dir eval/runs/new-development-3.5
+uv run --locked --env-file .env python -u -m eval.run_eval --model gemini-3.5-flash-lite --questions eval/questions_holdout.json --variant D-holdout-3.5 --output-dir eval/runs/new-holdout-3.5
 ```
 
-## Evaluation
+These commands make API requests and may incur charges. Existing output files are overwritten.
+`--model` overrides the environment explicitly. `--variant` labels a run; it does not restore historical implementations.
+For a model comparison, change only `--model` and the output directory while keeping code, prompt, questions and scorer fixed.
+The [README](README.md) includes the 3.8 comparison command and local hook installation.
 
-### Running it
-
-The evaluation dataset contains 22 questions, including four cases with
-expected refund amounts and three unrelated requests requiring refusal.
-
-Run an evaluation:
+After reviewing the saved answers and traces, update only each entry's `review` status and reason, then regenerate reports offline:
 
 ```powershell
-uv run --locked --env-file .env python -u -m eval.run_eval --variant A-substring
+uv run --locked python -m eval.run_eval --report-only --output-dir eval/runs/new-holdout-3.5
+uv run --locked python -m eval.compare_runs
 ```
 
-This makes real API requests and overwrites the default report files.
-Preserve existing results before another run, or choose another directory:
+## Architecture and decisions
 
-```powershell
-uv run --locked --env-file .env python -u -m eval.run_eval --variant A-substring --output-dir eval/runs/another-run
-```
+The application uses the Google Gen AI SDK directly through the Interactions API.
+The recorded runs used SDK 2.33.0. `uv.lock` makes the dependency set reproducible.
 
-`--variant` records a label; it does not change the retrieval algorithm.
-
-The evaluator saves:
-
-- `eval/results.json`: questions, answers, tool traces, checks, review
-  notes, timings, and configuration.
-- `eval/results.md`: a readable report and status counts.
-
-Results are saved after each question. A failed request does not prevent
-later questions from running. Interrupted evaluations are not resumable.
-
-### Assessment method
-
-Automatic checks inspect tool use, booking IDs, refund values, selected
-facts, empty answers, and step-limit failures.
-
-These checks are deliberately limited. Finding a number or status word
-does not establish the meaning of the whole answer. Refusal quality,
-unsupported claims, and completeness require qualitative review.
-
-A final `PASS` requires successful automatic checks and a recorded review
-with a reason. Qualitative assessments and review notes were prepared
-with ChatGPT/Codex assistance; they are not an independent human benchmark.
-
-After editing only the `review` fields, regenerate the report without API
-calls:
-
-```powershell
-uv run --locked python -m eval.run_eval --report-only
-```
-
-### Recorded baseline
-
-The committed baseline was run on 2026-10-27 using source commit
-`3e7adcceedf5399a2c3eff9d53b28368890b195c`.
-
-| Result | Count |
-| --- | ---: |
-| PASS | 17 |
-| FAIL | 5 |
-| Pending review | 0 |
-| ERROR | 0 |
-
-The reviewed pass rate is 77.3%. All 22 questions completed, with no API
-errors or step-limit failures.
-
-The run included 38 policy searches, of which 23 returned no matches.
-Some empty results were appropriate for undocumented topics; others
-prevented answering questions covered by the policies.
-
-The five failures were:
-
-| Case | Finding |
+| Module | Responsibility |
 | --- | --- |
-| January 1 opening | Searches missed the opening-hours section, causing a false claim that information was unavailable |
-| Buying a bike | Searches for buy/purchase/sales did not match the FAQ wording `sell` |
-| Revolut payment | The payment policy was retrieved, but the answer omitted known card acceptance and clarification of the ambiguous payment method |
-| Voucher refund | The amount was correct, but the answer omitted the separate deposit-return rule |
-| Unrelated geography | The agent declined the question but omitted the required staff referral |
+| `helpdesk/config.py` | Paths, fixed time, refund thresholds, retrieval settings, allowed document names and request settings |
+| `helpdesk/booking.py` | Read bookings and convert dates and monetary values |
+| `helpdesk/refund.py` | Deterministic refund totals, components and return methods |
+| `helpdesk/policies.py` | Read Markdown, split sections, rank matches and read a complete allowed document |
+| `helpdesk/llm.py` | Tool schemas, prompt, dispatcher, model loop, shared client factory and CLI |
+| `eval/run_eval.py` | Execute question sets, record traces, perform automatic checks and write reviewed reports |
+| `eval/compare_runs.py` | Compare saved reports, grouped by question hash and scorer version |
 
-The Revolut and voucher cases were judged incomplete under the recorded
-expectations; they were not refund calculation errors.
+A handwritten loop keeps the execution flow visible without adding an agent framework.
+For each question, the model chooses tools; Python validates and executes them and sends results back using the matching `call_id`.
+`previous_interaction_id` preserves context within that question. The tool declarations and system instruction are sent on every round.
+Multiple function calls in a single response are supported.
 
-Detailed evidence is available in [the evaluation report](eval/results.md)
-and [raw results](eval/results.json).
+There are at most five logical model requests per question. If the fifth response still requests tools, the loop returns a staff fallback without executing tools whose results could not be sent back.
+SDK retries can add HTTP attempts beyond this logical request count.
 
-After exploratory tests, I updated the system instruction to distinguish
-unrelated questions from relevant questions missing from the documents.
-The baseline still failed to refer the geography question to staff.
+The dispatcher allows exactly the declared functions, validates their single non-empty string argument and returns structured argument errors to the model.
+It does not evaluate arbitrary code. Full-document reads additionally allow only `faq.md`, `prices.md` and `cancellations.md`.
 
-This is one run on 22 development questions. It does not measure
-performance on unseen questions or variation between repeated runs.
+### Provider and model
+
+The default is Gemini 3.5 Flash-Lite. It supported the required tool calling and worked during development.
+Gemini 3.8 Flash was evaluated on the final D implementation using the same datasets and prompt.
+The reviewed scores were equal, while 3.5 used fewer tools and had lower observed wall time in those runs. This supports keeping the simpler default; it does not prove general model superiority.
+Early availability probes failed or timed out. Later direct requests identified quota errors (429) and a billing prerequisite (402), and subsequent evaluations completed. These infrastructure failures are distinct from wrong policy answers.
+
+### Data and refund rules
+
+The supplied README, Markdown policies and bookings are the business sources of truth.
+Bookings use `TypedDict`; ISO timestamps become timezone-aware `datetime` values and amounts become `Decimal`.
+Tool results serialize dates and amounts as strings. `TypedDict` provides static checking, not runtime schema validation.
+
+Refunds always use the supplied business time, `2026-06-10T09:00:00+02:00`, rather than the real system clock.
+
+| Confirmed booking: time before rental start | Refund of rental price |
+| --- | ---: |
+| At least 48 hours | 100% |
+| At least 24 hours, below 48 hours | 50% |
+| Below 24 hours | 0% |
+
+For an allowed cancellation, the full stored deposit is returned and the booking fee is never refunded.
+`in_progress`, `completed` and `cancelled` bookings cannot be cancelled again and yield zero from this attempt. This says nothing about historical refunds.
+Stored rental and deposit values are booking aggregates; they are not multiplied by bike count or discounted again.
+
+The final tool returns cancellation eligibility, rental/deposit/booking-fee components, total, return methods and the policy source.
+Rental refunds paid by card return to the same card within five working days; voucher rental refunds become new vouchers.
+The deposit follows its original payment method. The data do not separately identify that method, so the tool does not infer it from the booking's `paid_with` field.
+A component with no refund has no return method. Unknown booking IDs keep their explicit not-found result.
+Exceptional weather refunds remain a staff decision.
+
+No fractional-cent rounding rule is invented because the supplied policy does not specify one.
+
+### Retrieval and instructions
+
+Markdown is split at `#` and `##` headings, preserving introductory text such as the VAT statement.
+Search normalizes case, removes a small stop-word list and applies explicit token aliases, such as `bikes`/`bike`, `payment`/`pay` and purchase/sales vocabulary.
+It ranks sections by matching tokens, giving headings weight 3, and returns the top three positive matches with their filename, heading and text.
+The aliases normalize retrieval vocabulary; they do not decide answers.
+
+The initial substring search was easy to explain but missed paraphrases. Token matching improved recall, but a short query can still miss a relevant section entirely.
+The final `read_policy_document` tool lets the model read a complete supplied document when search is insufficient.
+The corpus is small: three documents, about 4,400 characters. A document-read fallback was a smaller addition than embeddings or a vector database.
+
+The prompt requires tool-grounded claims, code-calculated booking refunds, clarification when the booking ID is missing, and staff referral for unavailable or unrelated information.
+It distinguishes rental payments from deposits, prohibits claims of actual booking changes and leaves weather exceptions to staff.
+These instructions are not guarantees: the evaluation still detects unsupported claims and incorrect stopping behavior.
+
+## Tests and error handling
+
+The current offline suite has **193 passing cases**, including parameterized tests.
+It covers booking conversion and lookup, invalid arguments, file errors, all supplied refund amounts, statuses, 24/48-hour boundaries, fee exclusion, refund components and methods, retrieval, document access, fake-model loops, CLI errors and evaluation reporting.
+Temporary files and monkeypatching isolate tests from the supplied booking data. No model key or network is required for the tests.
+
+Unit tests check deterministic functions. Offline integration tests exercise file reads and fake-model tool-call/result round trips.
+Real-model evaluation checks behavior that a fake model cannot establish, such as choosing a useful query or refusing an unrelated request.
+The GitHub Actions workflow runs Ruff, formatting, mypy and offline pytest on pushes and pull requests without a model key.
+Local pre-commit hooks run the same categories of checks when installed.
+
+The CLI handles provider failures, timeouts, common data errors, unexpected response types and empty model output without showing the key.
+The evaluator records error type/status and saves results after each question. Interrupted runs cannot currently resume, and systemic quota errors do not automatically stop the full evaluation.
+
+Request timeouts were disabled for the saved experiments and remain `None` in configuration. A stalled request therefore requires interruption; the five-round budget is not a wall-clock deadline.
+The shared client factory keeps CLI/evaluator settings consistent and converts seconds to the milliseconds expected by `HttpOptions` when a finite timeout is configured.
+An offline MockTransport check found that SDK 2.33.0 normalizes the old retry setting of zero: both that setting and the explicit minimum setting made two transport calls for a simulated 503. The application does not claim that SDK retries are disabled.
+
+## Evaluation results
+
+The 45-question development set includes ten expected refund amounts and three unrelated refusal requests.
+After development changes were complete, a separate 15-question holdout added paraphrases, combined requirements, two refunds and two unrelated requests.
+Its questions were not used to tune D before the recorded model comparison, but share the same small domain and documents.
+
+| Dataset | Variant / model | PASS | FAIL | Pass rate |
+| --- | --- | ---: | ---: | ---: |
+| 45 development questions | A / 3.5 Flash-Lite, rescored v2 | 34 | 11 | 75.6% |
+| 45 development questions | B / 3.5 Flash-Lite, rescored v2 | 40 | 5 | 88.9% |
+| 45 development questions | C / 3.5 Flash-Lite | 41 | 4 | 91.1% |
+| 45 development questions | D / 3.5 Flash-Lite | 43 | 2 | 95.6% |
+| 45 development questions | D / 3.8 Flash | 43 | 2 | 95.6% |
+| 15 holdout questions | D / 3.5 Flash-Lite | 14 | 1 | 93.3% |
+| 15 holdout questions | D / 3.8 Flash | 14 | 1 | 93.3% |
+
+All listed runs completed with no recorded API errors. Equal totals hide different failures.
+The [complete comparison](eval/comparison.md) links every raw report, records model/prompt/question provenance, tool counts and timings, and includes the initial 17/22 run separately.
+
+A to B changed tokenization, ranking and result count together, while retaining the prompt. It improved retrieval, including seasonal opening hours.
+C added aliases and changed instructions; it improved some answers but introduced regressions in age advice, voucher explanation and location lookup.
+D added structured refund output and complete-document reading. Both D runs correctly explained voucher/deposit returns and recovered the location through a full FAQ read. These are combined changes, so a single improvement cannot be attributed to one feature alone.
+
+| Final D run | Remaining failures |
+| --- | --- |
+| Development / 3.5 | Repeated searches reach the step limit for cats; the unusual payment question is misclassified and answered without supporting tools |
+| Development / 3.8 | Cats still reach the step limit; the Revolut answer adds an unsupported universal claim about card acceptance |
+| Holdout / 3.5 | Absence of a documented student discount becomes an unjustified categorical denial |
+| Holdout / 3.8 | The phone-holder question reaches the step limit instead of explaining that the information is unavailable |
+
+On the 45-question D runs, 3.5 made 47 tool calls versus 68 for 3.8; summed case times were 245.55 versus 510.93 seconds.
+On holdout, they made 21 versus 27 tool calls and took 95.03 versus 192.65 seconds.
+Network conditions, service load and extra rounds affect these times; they are not a controlled latency benchmark. Token usage and actual monetary costs were not recorded.
+
+Automatic checks cover tool names, booking IDs, refund amounts, booking status, not-found wording, nonempty answers and step limits.
+A final pass also requires a qualitative review of the whole answer: correct primary facts do not excuse contradictory recommendations or unsupported additions.
+Reviews and their rationales were prepared with ChatGPT/Codex assistance, not an independent human benchmark. Some answers omit secondary details without changing the answer to the question; the notes explain those judgments.
+
+Scorer v2 recognizes selected unambiguous zero-refund phrases. Rescoring preserved original answers and traces: B moved from 39/45 to 40/45 because a semantically correct zero refund had been rejected for omitting a numeric currency amount.
+The original and rescored reports are retained. This is an evaluator correction, not an improvement in the model's response.
+
+Each configuration has one recorded run. Development-set tuning, a small holdout and subjective review prevent strong claims about generalization or statistical significance.
+The D holdout evaluator's `--questions` change was uncommitted when run; the recorded commit alone does not fully reproduce that evaluator. The actual question hash, prompt, model and traces are preserved, and the change is now committed.
+Cleanup was verified offline against all saved scorer-v2 checks and the evaluated D prompt; no fresh live-model run was performed after that refactor.
 
 ## AI-assisted development
 
-ChatGPT/Codex helped with implementation examples, complete test examples,
-SDK debugging, evaluation criteria, review notes, and this documentation.
+ChatGPT/Codex helped with implementation and test examples, SDK debugging, question drafting, review notes, comparisons, code cleanup and documentation. The repository therefore includes AI-generated contributions; this was not autocomplete-only assistance.
 
-### SDK response typing
+An early integration suggestion accessed `output_text` directly on the SDK result. Pylance and mypy reported that the return type could also be a stream. The code was changed to check `isinstance(interaction, Interaction)` before accessing non-streaming fields.
 
-An AI-generated integration example accessed `output_text` directly on
-the result of `client.interactions.create`. Pylance and mypy reported that
-the SDK return type could also be a stream.
+An earlier non-mutation test called the refund function against the real `bookings.json` and checked afterward that it was unchanged. That would detect an accidental write only after damaging the source file. I requested a monkeypatch version, and the test now uses a temporary copy. No damage to the actual file was observed.
 
-The code was changed to check `isinstance(interaction, Interaction)`
-before accessing `output_text`.
+The assistant initially proposed tokenization. I chose to measure a simple substring baseline first and then compare the changed approach. This was a change in development direction, not an AI factual error. The measurements also showed that tokenization alone does not connect purchase wording with the FAQ's sales wording.
 
-### Test isolation
-
-An earlier proposed refund test called the function against the actual
-`bookings.json` file and then checked that its contents were unchanged.
-If a regression introduced a write, the assertion would detect it only
-after the real file had been modified.
-
-I requested a monkeypatch-based version. During review, we changed the
-test to use a temporary copy and redirected `BOOKINGS_PATH` to it.
-
-### Retrieval approach
-
-The assistant initially suggested tokenizing policy queries. I decided
-to start with literal substring matching and evaluate it before adding
-tokenization, giving me a baseline for comparison.
-
-The evaluation exposed missed matches, including searches for buying
-bikes that did not match the FAQ wording “sell bikes.”
-
-Tokenization is planned as a separate experiment using the same questions,
-model, prompt, and request limit. It has not yet been implemented or
-compared. Tokenization alone will not connect words such as “buy” and
-“sell”; that requires query normalization or another retrieval strategy.
+The assistant also incorrectly described the original zero-retry setting as disabling SDK retries. An offline transport experiment showed the actual retry behavior, and the claim was corrected. This reinforced the need to check SDK behavior rather than infer it from a parameter name.
 
 ## Limitations and next steps
 
-Current limitations include:
+- Retrieval is lexical and uses a small hand-maintained alias list. Full-document reads improve access to facts but do not guarantee useful queries or a final answer within the step budget.
+- Grounding and refusals depend on model behavior. A model can still invent an exception, overstate card acceptance or confuse missing information with a prohibition.
+- Booking conversion is not comprehensive runtime validation. Negative/non-finite amounts, duplicate IDs, timezone-free timestamps and inconsistent date ranges are not all rejected. All records are parsed before lookup, so one malformed record can block another booking.
+- There is no memory between CLI questions and no support for hypothetical cancellation times such as tomorrow. Adding memory alone would not make future-time refund calculation correct.
+- Authentication and production customer-data access control are outside this demonstration. Booking IDs are not credentials.
+- The API can fail, enforce quotas or require billing. Timeouts are disabled and evaluation resume is not implemented.
+- Interactions exceptions are imported from an internal SDK module. The lockfile and offline tests help detect changes but do not make that import a stable API.
 
-- Literal substring retrieval without synonyms or semantic matching.
-- Prompt-based grounding that cannot guarantee correct model behavior.
-- A small, development-informed evaluation set and one recorded run.
-- Limited automatic assessment of natural-language answers.
-- Conversion of booking data without full runtime schema validation:
-  invalid local amounts or timezone-free dates are not comprehensively
-  rejected.
-- No explicit refund-component or payment-method fields in tool output.
-- No conversation memory between CLI questions.
-- No support for hypothetical cancellation times such as tomorrow.
-- External API availability, usage limits, and costs.
-- SDK exception imports from an internal module that may change after an
-  upgrade.
-- No authentication or production customer-data protections.
-- No GitHub Actions workflow yet.
-
-Next, I would compare token-based retrieval with the preserved baseline,
-keeping the questions, model, prompt, and request limit unchanged.
-Other improvements would include structured refund explanations,
-targeted data validation, offline CI, conversation memory, and
-a comparison with another model.
+With more time, I would first add a finite configurable request timeout, stop repeated attempts after systemic quota/billing failures, and support safe evaluation resume with matching configuration checks.
+Then I would target the observed stopping and undocumented-policy errors and evaluate repeated runs on additional frozen questions.
+Conversation memory would be a later optional feature; a framework, web UI or vector database is unnecessary for this dataset.
