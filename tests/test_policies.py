@@ -185,3 +185,51 @@ def test_search_finds_rental_and_deposit_payment_rules(query):
 
     assert "cash" in payment["text"]
     assert "not the deposit" in payment["text"]
+
+
+@pytest.mark.parametrize("file_name", ["faq.md", "prices.md", "cancellations.md"])
+def test_read_policy_document_returns_complete_document(file_name):
+    result = policies.read_policy_document(file_name)
+
+    assert result["source"] == file_name
+    assert result["text"] == (policies.POLICIES_PATH / file_name).read_text(
+        encoding="utf-8"
+    )
+    assert result["text"].strip()
+
+
+def test_read_policy_document_reads_configured_directory_as_utf8(tmp_path, monkeypatch):
+    text = "# FAQ\nZażółć gęślą jaźń.\n"
+    (tmp_path / "faq.md").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(policies, "POLICIES_PATH", tmp_path)
+
+    assert policies.read_policy_document("faq.md") == {
+        "source": "faq.md",
+        "text": text,
+    }
+
+
+@pytest.mark.parametrize(
+    "file_name",
+    [
+        "",
+        "../faq.md",
+        r"..\faq.md",
+        ".env",
+        "FAQ.md",
+        "C:/secret.md",
+        None,
+        123,
+        [],
+    ],
+)
+def test_read_policy_document_rejects_unknown_names(file_name):
+    with pytest.raises(ValueError, match="file_name"):
+        policies.read_policy_document(file_name)
+
+
+def test_read_policy_document_does_not_hide_missing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(policies, "POLICIES_PATH", tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        policies.read_policy_document("faq.md")

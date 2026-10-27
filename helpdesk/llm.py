@@ -18,7 +18,7 @@ from google.genai.interactions import (
 
 from .booking import get_booking
 from .config import TIME_NOW
-from .policies import search_policies
+from .policies import POLICY_DOCUMENT_NAMES, read_policy_document, search_policies
 from .refund import calculate_refund
 
 
@@ -90,6 +90,28 @@ TOOLS: list[ToolParam] = [
             "required": ["booking_id"],
         },
     },
+    {
+        "type": "function",
+        "name": "read_policy_document",
+        "description": (
+            "Read one complete CityWheels policy document when search results "
+            "do not answer the question. faq.md covers location, opening hours, "
+            "age limits, payment and common questions. prices.md covers rental "
+            "prices, fees and deposits. cancellations.md covers cancellation, "
+            "refund methods, booking changes, weather and staff contact."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_name": {
+                    "type": "string",
+                    "enum": list(POLICY_DOCUMENT_NAMES),
+                    "description": "One of the three supplied policy filenames.",
+                },
+            },
+            "required": ["file_name"],
+        },
+    },
 ]
 
 SYSTEM_INSTRUCTION = (
@@ -99,8 +121,10 @@ SYSTEM_INSTRUCTION = (
     "rental prices alone do not prove that bikes are not sold. "
     "Use search_policies for business rules, payment and refund methods. "
     "Use short English search phrases and correct obvious spelling mistakes. "
-    "If results do not answer the question, try a more specific phrase "
-    "or a different word with the same meaning. "
+    "Start policy lookup with search_policies. "
+    "If search results are empty or do not answer the relevant question, "
+    "use read_policy_document to read the appropriate complete document "
+    "before saying the information is unavailable. "
     "Distinguish payment for the rental from payment for the deposit. "
     "Do not treat a requirement for the deposit as a requirement for all payments. "
     "For an ambiguous branded payment method, explain the documented payment "
@@ -129,10 +153,16 @@ SYSTEM_INSTRUCTION = (
 
 
 def execute_tool(name: str, arguments: dict[str, object]) -> object:
-    if name not in {"search_policies", "get_booking", "calculate_refund"}:
+    argument_names = {
+        "search_policies": "query",
+        "get_booking": "booking_id",
+        "calculate_refund": "booking_id",
+        "read_policy_document": "file_name",
+    }
+    if name not in argument_names:
         return {"error": "unknown_tool"}
 
-    argument_name = "query" if name == "search_policies" else "booking_id"
+    argument_name = argument_names[name]
     value = arguments.get(argument_name)
 
     if (
@@ -144,6 +174,14 @@ def execute_tool(name: str, arguments: dict[str, object]) -> object:
 
     if name == "search_policies":
         return search_policies(value)
+
+    if name == "read_policy_document":
+        if value not in POLICY_DOCUMENT_NAMES:
+            return {
+                "error": "Unknown policy document",
+                "allowed": list(POLICY_DOCUMENT_NAMES),
+            }
+        return read_policy_document(value)
 
     if name == "get_booking":
         return get_booking(value)

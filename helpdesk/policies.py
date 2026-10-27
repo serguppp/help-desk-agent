@@ -12,6 +12,8 @@ TOKEN_ALIASES = {
     "payments": "pay",
 }
 
+POLICY_DOCUMENT_NAMES = ("faq.md", "prices.md", "cancellations.md")
+
 
 class PolicyDocument(TypedDict):
     source: str
@@ -110,3 +112,11 @@ def search_policies(query: str) -> list[PolicySections]:
     ranked.sort(key=lambda item: item[0], reverse=True)
 
     return [section for _, section in ranked[:MAX_RESULTS]]
+
+
+def read_policy_document(file_name: str) -> PolicyDocument:
+    if not isinstance(file_name, str) or file_name not in POLICY_DOCUMENT_NAMES:
+        raise ValueError("file_name must be faq.md, prices.md or cancellations.md")
+
+    path = POLICIES_PATH / file_name
+    return PolicyDocument(source=file_name, text=path.read_text(encoding="utf-8"))

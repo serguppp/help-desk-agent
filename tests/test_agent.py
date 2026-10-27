@@ -445,3 +445,98 @@ def test_agent_sends_refund_breakdown_and_methods_to_model():
     assert Decimal(payload["refund"]) == Decimal(73)
     assert payload["rental_refund_method"] == "New voucher, never money."
     assert payload["deposit_refund_method"] == "Original deposit payment method."
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {},
+        {"file_name": ".env"},
+        {"file_name": "../faq.md"},
+        {"file_name": 123},
+        {"file_name": "faq.md", "extra": True},
+    ],
+)
+def test_agent_sends_document_argument_errors_back_to_model(arguments):
+    client = make_fake_client("read_policy_document", arguments)
+
+    llm.run_agent("Read a document", client, "fake-model")
+
+    request = client.interactions.create.call_args_list[1].kwargs
+    payload = json.loads(request["input"][0]["result"][0]["text"])
+
+    assert payload.get("error")
+
+
+def test_agent_can_read_document_after_empty_search(monkeypatch, tmp_path):
+    from helpdesk import policies
+
+    text = "# FAQ\n## Where are you?\nAt the Riverside Park entrance.\n"
+    (tmp_path / "faq.md").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(policies, "POLICIES_PATH", tmp_path)
+    monkeypatch.setattr(llm, "search_policies", lambda _: [])
+
+    client = MagicMock(spec=genai.Client)
+    client.interactions.create.side_effect = [
+        Interaction(
+            id="search-interaction",
+            status="requires_action",
+            steps=[
+                FunctionCallStep(
+                    id="search-call",
+                    name="search_policies",
+                    arguments={"query": "location"},
+                )
+            ],
+        ),
+        Interaction(
+            id="document-interaction",
+            status="requires_action",
+            steps=[
+                FunctionCallStep(
+                    id="document-call",
+                    name="read_policy_document",
+                    arguments={"file_name": "faq.md"},
+                )
+            ],
+        ),
+        Interaction(
+            id="final-interaction",
+            status="completed",
+            steps=[
+                ModelOutputStep(
+                    content=[TextContent(text="At the Riverside Park entrance.")]
+                )
+            ],
+        ),
+    ]
+
+    trace: list[llm.ToolTrace] = []
+    answer = llm.run_agent(
+        "Where are you?",
+        client,
+        "fake-model",
+        trace=trace,
+    )
+
+    assert answer == "At the Riverside Park entrance."
+    assert client.interactions.create.call_count == 3
+
+    search_result_request = client.interactions.create.call_args_list[1].kwargs
+    assert search_result_request["previous_interaction_id"] == "search-interaction"
+    assert json.loads(search_result_request["input"][0]["result"][0]["text"]) == []
+
+    document_result_request = client.interactions.create.call_args_list[2].kwargs
+    assert document_result_request["previous_interaction_id"] == "document-interaction"
+
+    result = document_result_request["input"][0]
+    assert result["name"] == "read_policy_document"
+    assert result["call_id"] == "document-call"
+    assert json.loads(result["result"][0]["text"]) == {
+        "source": "faq.md",
+        "text": text,
+    }
+    assert [call["name"] for call in trace] == [
+        "search_policies",
+        "read_policy_document",
+    ]
