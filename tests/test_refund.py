@@ -145,3 +145,75 @@ def test_refund_does_not_modify_bookings_file(tmp_path, monkeypatch):
     refund_tools.calculate_refund("CW-1005")
 
     assert bookings_path.read_bytes() == original_data
+
+
+@pytest.mark.parametrize(
+    ("booking_id", "rental", "deposit", "rental_method"),
+    [
+        ("CW-1001", "40", "50", "Same card within 5 working days."),
+        ("CW-1002", "40", "300", "Same card within 5 working days."),
+        ("CW-1003", "0", "50", None),
+        ("CW-1004", "23", "50", "New voucher, never money."),
+    ],
+)
+def test_refund_breakdown_and_methods(booking_id, rental, deposit, rental_method):
+    result = refund_tools.calculate_refund(booking_id)
+
+    assert "refund" in result
+    assert result.get("cancellation_allowed") is True
+    assert result.get("rental_refund_eur") == Decimal(rental)
+    assert result.get("deposit_refund_eur") == Decimal(deposit)
+    assert result.get("booking_fee_refund_eur") == Decimal(0)
+    assert result.get("refund") == Decimal(rental) + Decimal(deposit)
+    assert result.get("rental_refund_method") == rental_method
+    assert result.get("deposit_refund_method") == "Original deposit payment method."
+    assert result.get("policy_source") == "data/policies/cancellations.md"
+
+    for field in (
+        "rental_refund_eur",
+        "deposit_refund_eur",
+        "booking_fee_refund_eur",
+        "refund",
+    ):
+        assert isinstance(result.get(field), Decimal)
+
+
+@pytest.mark.parametrize("booking_id", ["CW-1005", "CW-1006", "CW-1008"])
+def test_disallowed_cancellation_has_no_refund_components_or_methods(booking_id):
+    result = refund_tools.calculate_refund(booking_id)
+
+    assert "refund" in result
+    assert result.get("cancellation_allowed") is False
+    assert result.get("rental_refund_eur") == Decimal(0)
+    assert result.get("deposit_refund_eur") == Decimal(0)
+    assert result.get("booking_fee_refund_eur") == Decimal(0)
+    assert result.get("refund") == Decimal(0)
+    assert result.get("rental_refund_method") is None
+    assert result.get("deposit_refund_method") is None
+
+
+def test_refund_rejects_unknown_payment_method(monkeypatch):
+    result = booking_tools.get_booking("CW-1001")
+    assert result["booking"] is not None
+    result["booking"]["paid_with"] = "unsupported"
+
+    monkeypatch.setattr(refund_tools, "get_booking", lambda _: result)
+
+    with pytest.raises(ValueError, match="Unsupported payment method"):
+        refund_tools.calculate_refund("CW-1001")
+
+
+def test_allowed_cancellation_with_zero_amounts_has_no_refund_methods(monkeypatch):
+    result = booking_tools.get_booking("CW-1003")
+    assert result["booking"] is not None
+    result["booking"]["deposit_eur"] = Decimal(0)
+
+    monkeypatch.setattr(refund_tools, "get_booking", lambda _: result)
+
+    refund = refund_tools.calculate_refund("CW-1003")
+
+    assert "refund" in refund
+    assert refund.get("cancellation_allowed") is True
+    assert refund.get("refund") == Decimal(0)
+    assert refund.get("rental_refund_method") is None
+    assert refund.get("deposit_refund_method") is None

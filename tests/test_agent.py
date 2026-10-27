@@ -428,3 +428,20 @@ def test_agent_sends_zero_refund_and_cancellation_reason(booking_id):
     assert Decimal(payload["refund"]) == 0
     assert payload["booking"]["id"] == booking_id
     assert payload["booking"]["status"] in payload["message"]
+
+
+def test_agent_sends_refund_breakdown_and_methods_to_model():
+    client = make_fake_client("calculate_refund", {"booking_id": "CW-1004"})
+
+    llm.run_agent("What is the refund for CW-1004?", client, "fake-model")
+
+    request = client.interactions.create.call_args_list[1].kwargs
+    payload = json.loads(request["input"][0]["result"][0]["text"])
+
+    assert payload["cancellation_allowed"] is True
+    assert Decimal(payload["rental_refund_eur"]) == Decimal(23)
+    assert Decimal(payload["deposit_refund_eur"]) == Decimal(50)
+    assert Decimal(payload["booking_fee_refund_eur"]) == 0
+    assert Decimal(payload["refund"]) == Decimal(73)
+    assert payload["rental_refund_method"] == "New voucher, never money."
+    assert payload["deposit_refund_method"] == "Original deposit payment method."
