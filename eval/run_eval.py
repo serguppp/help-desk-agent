@@ -251,6 +251,7 @@ def main() -> None:
 
     report: dict = {
         "metadata": {
+            "request_timeout_seconds": None,
             "model": model,
             "sdk_version": genai.__version__,
             "variant": args.variant,
@@ -268,7 +269,8 @@ def main() -> None:
     with genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=30_000,
+            timeout=None,
+            client_args={"timeout": None},
             retry_options=types.HttpRetryOptions(attempts=0),
         ),
     ) as client:
