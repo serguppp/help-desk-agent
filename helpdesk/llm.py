@@ -1,9 +1,13 @@
 import json
 import os
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from google import genai
+from google.genai._gaos.lib.compat_errors import (
+    APIError as InteractionsAPIError,
+)
+from google.genai._gaos.lib.compat_errors import APITimeoutError
 from google.genai.interactions import (
     FunctionResultStepParam,
     Interaction,
@@ -218,24 +222,50 @@ def main() -> None:
     model = os.getenv("GEMINI_MODEL")
 
     if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured")
+        raise SystemExit("GEMINI_API_KEY is not configured")
 
     if not model:
-        raise ValueError("GEMINI_MODEL is not configured")
+        raise SystemExit("GEMINI_MODEL is not configured")
 
-    with genai.Client(api_key=api_key) as client:
-        while True:
-            question = input("You: ").strip()
+    try:
+        with genai.Client(api_key=api_key) as client:
+            while True:
+                question = input("You: ").strip()
 
-            if question.lower() in {"exit", "quit"}:
-                break
+                if question.lower() in {"exit", "quit"}:
+                    break
 
-            if not question:
-                continue
+                if not question:
+                    continue
 
-            answer = run_agent(question, client, model)
-            print("Agent:", answer)
-            print()
+                try:
+                    answer = run_agent(question, client, model)
+
+                except APITimeoutError:
+                    print("Agent: The request timed out. Please try again later.")
+
+                except InteractionsAPIError:
+                    print(
+                        "Agent: The AI service request failed. Please try again later."
+                    )
+
+                except (OSError, ValueError, KeyError, InvalidOperation):
+                    print(
+                        "Agent: CityWheels data could not be read. Please contact the staff."
+                    )
+
+                except RuntimeError:
+                    print(
+                        "Agent: The assistant could not complete the request. Please try again or contact the staff."
+                    )
+
+                else:
+                    print("Agent:", answer)
+
+                print()
+
+    except (KeyboardInterrupt, EOFError):
+        print("\nGoodbye.")
 
 
 if __name__ == "__main__":
