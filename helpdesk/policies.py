@@ -1,7 +1,6 @@
-import re
 from typing import TypedDict
 
-from .config import HEADING_WEIGHT, MAX_RESULTS, POLICIES_PATH, STOP_WORDS
+from .config import POLICIES_PATH
 
 
 class PolicyDocument(TypedDict):
@@ -67,36 +66,24 @@ def load_policies() -> list[PolicyDocument]:
     return documents
 
 
-def tokenize(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.casefold())) - STOP_WORDS
-
-
 def search_policies(query: str) -> list[PolicySections]:
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be a non-empty string")
 
-    query_tokens = tokenize(query)
-    if not query_tokens:
-        return []
-
+    query = query.strip().lower()
     sections: list[PolicySections] = []
     documents: list[PolicyDocument] = load_policies()
     for document in documents:
         sections.extend(split_sections(document["source"], document["text"]))
 
-    ranked: list[tuple[int, PolicySections]] = []
-
+    heading_matches: list[PolicySections] = []
+    text_matches: list[PolicySections] = []
     for section in sections:
-        heading_tokens = tokenize(section["heading"])
-        text_tokens = tokenize(section["text"])
+        heading = section["heading"].lower()
+        text = section["text"].lower()
+        if query in heading:
+            heading_matches.append(section)
+        elif query in text:
+            text_matches.append(section)
 
-        heading_matches = len(query_tokens & heading_tokens)
-        text_matches = len(query_tokens & text_tokens)
-        score = HEADING_WEIGHT * heading_matches + text_matches
-
-        if score > 0:
-            ranked.append((score, section))
-
-    ranked.sort(key=lambda item: item[0], reverse=True)
-
-    return [section for _, section in ranked[:MAX_RESULTS]]
+    return heading_matches + text_matches

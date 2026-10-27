@@ -74,17 +74,19 @@ def test_search_prioritizes_headings_and_avoids_duplicates(monkeypatch):
     ]
 
 
-def test_search_matches_tokens_independently_of_word_order(monkeypatch):
+def test_search_matches_a_contiguous_phrase(monkeypatch):
     document = {
         "source": "example.md",
-        "text": "# Example\n## Booking fee\nThe online charge is two euros.\n",
+        "text": ("# Example\n## Booking fee\nThe online charge is two euros.\n"),
     }
-    monkeypatch.setattr(policies, "load_policies", lambda: [document])
+    monkeypatch.setattr(
+        policies,
+        "load_policies",
+        lambda: [document],
+    )
 
-    results = policies.search_policies("booking fee")
-
-    assert results
-    assert results == policies.search_policies("fee booking")
+    assert policies.search_policies("booking fee")
+    assert policies.search_policies("fee booking") == []
 
 
 def test_load_policies_rejects_directory_without_documents(tmp_path, monkeypatch):
@@ -95,74 +97,3 @@ def test_load_policies_rejects_directory_without_documents(tmp_path, monkeypatch
         match="No CityWheels policy documents found",
     ):
         policies.load_policies()
-
-
-def test_tokenize_ignores_case_punctuation_and_stop_words():
-    assert policies.tokenize("  OPEN, March! 24-hour THE ") == {
-        "open",
-        "march",
-        "24",
-        "hour",
-    }
-
-
-def test_search_finds_opening_hours_for_multiword_query():
-    results = policies.search_policies("open hours march")
-
-    assert results
-    assert results[0]["source"] == "faq.md"
-    assert results[0]["heading"] == "When are you open?"
-
-
-def test_search_matches_whole_words_instead_of_substrings():
-    results = policies.search_policies("age")
-
-    assert [section["heading"] for section in results] == ["Are there age limits?"]
-
-
-def test_search_returns_no_results_for_only_stop_words():
-    assert policies.search_policies("can I") == []
-
-
-def test_search_limits_results_and_preserves_order_for_equal_scores(monkeypatch):
-    document = {
-        "source": "example.md",
-        "text": (
-            "# Example\n"
-            "## First\nVoucher information.\n"
-            "## Second\nVoucher information.\n"
-            "## Third\nVoucher information.\n"
-            "## Fourth\nVoucher information.\n"
-        ),
-    }
-    monkeypatch.setattr(policies, "load_policies", lambda: [document])
-
-    results = policies.search_policies("voucher")
-
-    assert [section["heading"] for section in results] == [
-        "First",
-        "Second",
-        "Third",
-    ]
-
-
-def test_search_ranks_more_matching_tokens_higher(monkeypatch):
-    document = {
-        "source": "example.md",
-        "text": (
-            "# Example\n"
-            "## First\nVoucher information.\n"
-            "## Second\nVoucher and card information.\n"
-        ),
-    }
-    monkeypatch.setattr(policies, "load_policies", lambda: [document])
-
-    results = policies.search_policies("voucher card")
-
-    assert [section["heading"] for section in results] == ["Second", "First"]
-
-
-def test_search_does_not_increase_weight_for_repeated_query_words():
-    assert policies.search_policies("voucher voucher") == policies.search_policies(
-        "voucher"
-    )
