@@ -414,3 +414,17 @@ def test_agent_does_not_execute_tools_without_budget_for_their_results(
     fake_dispatcher.assert_not_called()
     assert trace == []
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("booking_id", ["CW-1005", "CW-1006", "CW-1008"])
+def test_agent_sends_zero_refund_and_cancellation_reason(booking_id):
+    client = make_fake_client("calculate_refund", {"booking_id": booking_id})
+
+    llm.run_agent(f"Can I cancel {booking_id}?", client, "fake-model")
+
+    request = client.interactions.create.call_args_list[1].kwargs
+    payload = json.loads(request["input"][0]["result"][0]["text"])
+
+    assert Decimal(payload["refund"]) == 0
+    assert payload["booking"]["id"] == booking_id
+    assert payload["booking"]["status"] in payload["message"]

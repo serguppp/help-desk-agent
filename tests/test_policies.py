@@ -166,3 +166,22 @@ def test_search_does_not_increase_weight_for_repeated_query_words():
     assert policies.search_policies("voucher voucher") == policies.search_policies(
         "voucher"
     )
+
+
+@pytest.mark.parametrize("query", ["buy a bike purchase sales", "purchase bikes"])
+def test_search_finds_explicit_sales_policy(query):
+    results = policies.search_policies(query)
+
+    assert results[0]["heading"] == "Do you sell bikes?"
+    assert results[0]["source"] == "faq.md"
+    assert "only rent" in results[0]["text"]
+
+
+@pytest.mark.parametrize("query", ["payment methods", "accepted payment", "pay"])
+def test_search_finds_rental_and_deposit_payment_rules(query):
+    results = policies.search_policies(query)
+
+    payment = next(s for s in results if s["heading"] == "How can I pay?")
+
+    assert "cash" in payment["text"]
+    assert "not the deposit" in payment["text"]

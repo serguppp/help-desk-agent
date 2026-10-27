@@ -3,6 +3,15 @@ from typing import TypedDict
 
 from .config import HEADING_WEIGHT, MAX_RESULTS, POLICIES_PATH, STOP_WORDS
 
+TOKEN_ALIASES = {
+    "bikes": "bike",
+    "buy": "sell",
+    "purchase": "sell",
+    "sales": "sell",
+    "payment": "pay",
+    "payments": "pay",
+}
+
 
 class PolicyDocument(TypedDict):
     source: str
@@ -68,7 +77,8 @@ def load_policies() -> list[PolicyDocument]:
 
 
 def tokenize(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.casefold())) - STOP_WORDS
+    tokens = set(re.findall(r"[a-z0-9]+", text.casefold())) - STOP_WORDS
+    return {TOKEN_ALIASES.get(token, token) or token for token in tokens}
 
 
 def search_policies(query: str) -> list[PolicySections]:
