@@ -96,7 +96,11 @@ SYSTEM_INSTRUCTION = (
     f"The fixed current time is {TIME_NOW.isoformat()}. "
     "If a search is insufficient, you may try another search phrase. "
     "If information is unavailable or unrelated to CityWheels, "
-    "say so and direct the customer to the staff."
+    "say so and direct the customer to the staff. "
+    "Distinguish unrelated questions from CityWheels questions "
+    "that the documents do not answer. "
+    "For relevant but undocumented questions, acknowledge the topic, "
+    "explain that the information is unavailable, and refer to staff."
 )
 
 
