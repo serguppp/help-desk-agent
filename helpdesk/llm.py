@@ -152,7 +152,7 @@ def run_agent(
     client: genai.Client,
     model: str,
     max_steps: int = 5,
-    debug: bool = False,
+    debug: bool = True,
     trace: list[ToolTrace] | None = None,
 ) -> str:
     if not question.strip():

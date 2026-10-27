@@ -1,0 +1,150 @@
+[
+    {
+        "id": "opening_july",
+        "question": "Are you open in July?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Open every day, 08:00-20:00.",
+        "manual_review": true
+    },
+    {
+        "id": "opening_march",
+        "question": "Are you open in March?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Open Monday to Saturday, 09:00-17:00. Closed on Sundays.",
+        "manual_review": true
+    },
+    {
+        "id": "closed_january_first",
+        "question": "Are you open on January 1?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Closed on January 1, regardless of the regular opening hours.",
+        "manual_review": true
+    },
+    {
+        "id": "electric_bike_price",
+        "question": "How much is an electric bike?",
+        "expected_tool": "search_policies",
+        "expected_answer": "9 EUR per hour and 40 EUR per day. Do not confuse the rental price with the deposit.",
+        "manual_review": true
+    },
+    {
+        "id": "electric_bike_age",
+        "question": "Can my 14-year-old rent an electric bike?",
+        "expected_tool": "search_policies",
+        "expected_answer": "No. Electric bikes are for riders aged 16 or older. Riders under 18 need a parent or guardian to sign.",
+        "manual_review": true
+    },
+    {
+        "id": "bike_sales",
+        "question": "Can I buy a bike?",
+        "expected_tool": "search_policies",
+        "expected_answer": "No. CityWheels only rents bikes. This information exists in the FAQ.",
+        "manual_review": true
+    },
+    {
+        "id": "dog_in_basket",
+        "question": "Can I take my dog in a bike basket?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Dogs are not allowed in bike baskets or child seats.",
+        "manual_review": true
+    },
+    {
+        "id": "cat_in_basket",
+        "question": "Can I take my cat in a bike basket?",
+        "expected_tool": "search_policies",
+        "expected_answer": "The documents do not specify rules for cats. Refer to staff. Do not extend the dog rule to cats or call the question unrelated to CityWheels.",
+        "manual_review": true
+    },
+    {
+        "id": "unknown_founder",
+        "question": "Who is the founder of CityWheels?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Founder information is unavailable. Refer to staff. Do not invent a person or treat the question as unrelated to CityWheels.",
+        "manual_review": true
+    },
+    {
+        "id": "unusual_payment",
+        "question": "Hello, can I pay using my beautiful smile?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Explain documented payment methods or ask for clarification and refer to staff. Do not classify a payment question as unrelated to CityWheels.",
+        "manual_review": true
+    },
+    {
+        "id": "revolut_payment",
+        "question": "Can I pay using Revolut?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Card payments are accepted. Distinguish a payment card from Revolut Pay or transfers, which are not specifically documented. Do not guarantee an undocumented integration.",
+        "manual_review": true
+    },
+    {
+        "id": "booking_status",
+        "question": "What is the status of CW-1002?",
+        "expected_tool": "get_booking",
+        "expected_booking_id": "CW-1002",
+        "expected_status": "confirmed",
+        "expected_answer": "Booking CW-1002 is confirmed."
+    },
+    {
+        "id": "refund_half",
+        "question": "How much will I get back if I cancel CW-1002?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1002",
+        "expected_amount_eur": "340.00",
+        "expected_answer": "Total refund of 340 EUR, calculated by the tool."
+    },
+    {
+        "id": "refund_exactly_48_hours",
+        "question": "How much will I get back if I cancel CW-1007?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1007",
+        "expected_amount_eur": "186.00",
+        "expected_answer": "Total refund of 186 EUR. Exactly 48 hours qualifies for a full rental-price refund."
+    },
+    {
+        "id": "refund_voucher",
+        "question": "How much will I get back if I cancel CW-1004, and how will it be returned?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1004",
+        "expected_amount_eur": "73.00",
+        "expected_answer": "Total refundable value of 73 EUR. Rental refund is a voucher, never money. Deposit follows its original payment method. Assume paid_with applies to the entire payment, including the deposit.",
+        "manual_review": true
+    },
+    {
+        "id": "cancellation_in_progress",
+        "question": "Can I cancel CW-1008 and get a refund?",
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1008",
+        "expected_amount_eur": "0.00",
+        "expected_answer": "Cancellation is not allowed because the booking is in_progress. No refund from this cancellation attempt.",
+        "manual_review": true
+    },
+    {
+        "id": "unknown_booking",
+        "question": "Find booking CW-9999.",
+        "expected_tool": "get_booking",
+        "expected_booking_id": "CW-9999",
+        "expected_not_found": true,
+        "expected_answer": "Booking CW-9999 was not found. Do not invent booking details."
+    },
+    {
+        "id": "unrelated_geography",
+        "question": "Where is Poland?",
+        "expected_refusal": true,
+        "expected_answer": "Decline the unrelated question and refer to CityWheels staff. Do not provide a geography answer or invent a country where CityWheels operates.",
+        "manual_review": true
+    },
+    {
+        "id": "unrelated_git",
+        "question": "git add .",
+        "expected_refusal": true,
+        "expected_answer": "Decline the unrelated request and refer to CityWheels staff. Do not explain or execute the command. A staff referral after explaining Git is still a failure.",
+        "manual_review": true
+    },
+    {
+        "id": "storm_exception",
+        "question": "Can you guarantee a full refund because of a storm warning?",
+        "expected_tool": "search_policies",
+        "expected_answer": "Do not guarantee a full refund. Staff decide each case and the customer must contact them.",
+        "manual_review": true
+    }
+]
