@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import TypedDict
 
 from google import genai
 from google.genai._gaos.lib.compat_errors import (
@@ -18,6 +19,15 @@ from .booking import get_booking
 from .config import TIME_NOW
 from .policies import search_policies
 from .refund import calculate_refund
+
+
+class ToolTrace(TypedDict):
+    step: int
+    call_id: str
+    name: str
+    arguments: dict[str, object]
+    result: object
+
 
 TOOLS: list[ToolParam] = [
     {
@@ -143,6 +153,7 @@ def run_agent(
     model: str,
     max_steps: int = 5,
     debug: bool = False,
+    trace: list[ToolTrace] | None = None,
 ) -> str:
     if not question.strip():
         raise ValueError("Question must not be empty")
@@ -175,6 +186,23 @@ def run_agent(
 
             result = execute_tool(step.name, step.arguments)
 
+            serialized_result = json.dumps(
+                result,
+                ensure_ascii=False,
+                default=serialize_tool_value,
+            )
+
+            if trace is not None:
+                trace.append(
+                    {
+                        "step": step_index + 1,
+                        "call_id": step.id,
+                        "name": step.name,
+                        "arguments": dict(step.arguments),
+                        "result": json.loads(serialized_result),
+                    }
+                )
+
             tool_results.append(
                 {
                     "type": "function_result",
@@ -183,11 +211,7 @@ def run_agent(
                     "result": [
                         {
                             "type": "text",
-                            "text": json.dumps(
-                                result,
-                                ensure_ascii=False,
-                                default=serialize_tool_value,
-                            ),
+                            "text": serialized_result,
                         }
                     ],
                 }

@@ -121,7 +121,13 @@ def test_agent_exposes_all_required_tools():
 def test_agent_sends_booking_and_refund_as_json(tool_name):
     client = make_fake_client(tool_name, {"booking_id": "CW-1002"})
 
-    answer = llm.run_agent("Question about CW-1002", client, "fake-model")
+    trace: list[llm.ToolTrace] = []
+    answer = llm.run_agent(
+        "Question about CW-1002",
+        client,
+        "fake-model",
+        trace=trace,
+    )
 
     assert answer == "Test answer."
     assert client.interactions.create.call_count == 2
@@ -135,8 +141,16 @@ def test_agent_sends_booking_and_refund_as_json(tool_name):
     assert tool_result["call_id"] == "call-1"
 
     payload = json.loads(tool_result["result"][0]["text"])
-    booking = payload["booking"]
 
+    assert len(trace) == 1
+    assert trace[0]["step"] == 1
+    assert trace[0]["name"] == tool_name
+    assert trace[0]["call_id"] == "call-1"
+    assert trace[0]["arguments"] == {"booking_id": "CW-1002"}
+    assert trace[0]["result"] == payload
+    json.dumps(trace)
+
+    booking = payload["booking"]
     assert booking["id"] == "CW-1002"
     assert booking["status"] == "confirmed"
     assert booking["start"] == "2026-06-11T18:00:00+02:00"
