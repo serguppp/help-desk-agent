@@ -6,9 +6,10 @@ import pytest
 from helpdesk.config import QUESTIONS_PATH
 
 
-@pytest.fixture
-def evaluation_questions() -> list[dict]:
-    questions = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
+@pytest.fixture(params=["questions.json", "questions_holdout.json"])
+def evaluation_questions(request) -> list[dict]:
+    path = QUESTIONS_PATH.parent / request.param
+    questions = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(questions, list)
     return questions
 

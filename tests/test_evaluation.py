@@ -366,3 +366,40 @@ def test_report_records_scorer_version(tmp_path, sample_report):
     saved = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
 
     assert saved["metadata"]["scorer_version"] == 2
+
+
+def test_main_selects_question_file_and_explicit_model(tmp_path, monkeypatch):
+    questions_path = QUESTIONS_PATH.parent / "questions_holdout.json"
+    cases = json.loads(questions_path.read_text(encoding="utf-8"))
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    monkeypatch.setenv("GEMINI_MODEL", "environment-model")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_eval",
+            "--questions",
+            str(questions_path),
+            "--model",
+            "selected-model",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    monkeypatch.setattr(
+        run_eval.subprocess, "check_output", MagicMock(return_value="test-commit\n")
+    )
+    client = MagicMock()
+    client.__enter__.return_value = client
+    monkeypatch.setattr(run_eval.genai, "Client", MagicMock(return_value=client))
+    fake_agent = MagicMock(return_value="Test answer.")
+    monkeypatch.setattr(run_eval, "run_agent", fake_agent)
+    run_eval.main()
+    saved = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
+    assert [entry["case"] for entry in saved["results"]] == cases
+    assert saved["metadata"]["model"] == "selected-model"
+    assert saved["metadata"]["questions_file"] == "questions_holdout.json"
+    assert (
+        saved["metadata"]["questions_sha256"]
+        == run_eval.hashlib.sha256(questions_path.read_bytes()).hexdigest()
+    )
+    assert all(call.args[2] == "selected-model" for call in fake_agent.call_args_list)

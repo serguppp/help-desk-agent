@@ -187,7 +187,7 @@ def write_report(report: dict, output_dir: Path) -> None:
     lines.extend(
         [
             "",
-            "PASS requires successful automatic checks and a recorded human review.",
+            "PASS requires successful automatic checks and a recorded qualitative review.",
             "MANUAL_REVIEW is not counted as a pass.",
             "Raw tool traces and configuration are stored in results.json.",
         ]
@@ -225,9 +225,11 @@ def write_report(report: dict, output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--variant", default="A-substring")
+    parser.add_argument("--variant", default="current")
+    parser.add_argument("--model", help="Override GEMINI_MODEL for this run")
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "eval")
     parser.add_argument("--report-only", action="store_true")
+    parser.add_argument("--questions", type=Path, default=QUESTIONS_PATH)
     args = parser.parse_args()
 
     if args.report_only:
@@ -238,7 +240,7 @@ def main() -> None:
         return
 
     api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL")
+    model = args.model or os.getenv("GEMINI_MODEL")
 
     if not api_key:
         raise SystemExit("GEMINI_API_KEY is not configured")
@@ -246,7 +248,7 @@ def main() -> None:
     if not model:
         raise SystemExit("GEMINI_MODEL is not configured")
 
-    questions_bytes = QUESTIONS_PATH.read_bytes()
+    questions_bytes = args.questions.read_bytes()
     cases = json.loads(questions_bytes.decode("utf-8"))
 
     if len(cases) < 10:
@@ -284,6 +286,7 @@ def main() -> None:
             "run_time_utc": datetime.now(UTC).isoformat(),
             "business_time": TIME_NOW.isoformat(),
             "commit": commit,
+            "questions_file": args.questions.name,
             "questions_sha256": hashlib.sha256(questions_bytes).hexdigest(),
             "system_instruction": SYSTEM_INSTRUCTION,
             "total_questions": len(cases),
