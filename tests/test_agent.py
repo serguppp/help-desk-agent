@@ -216,3 +216,201 @@ def test_dispatcher_does_not_hide_invalid_booking_json(monkeypatch):
 
     with pytest.raises(json.JSONDecodeError):
         llm.execute_tool("get_booking", {"booking_id": "CW-1002"})
+
+
+def test_agent_returns_final_text_without_executing_tools(monkeypatch, capsys):
+    client = make_fake_client(
+        "search_policies",
+        {"query": "unused"},
+        tool_calls=0,
+        answer="Please contact the staff.",
+    )
+    fake_dispatcher = MagicMock()
+    monkeypatch.setattr(llm, "execute_tool", fake_dispatcher)
+
+    answer = llm.run_agent(
+        "An unsupported question",
+        client,
+        "fake-model",
+        max_steps=1,
+    )
+
+    assert answer == "Please contact the staff."
+    assert client.interactions.create.call_count == 1
+    fake_dispatcher.assert_not_called()
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("tool_name", ["get_booking", "calculate_refund"])
+def test_agent_sends_unknown_booking_result_to_model(tool_name, capsys):
+    client = make_fake_client(
+        tool_name,
+        {"booking_id": "CW-9999"},
+        answer="Booking CW-9999 was not found.",
+    )
+
+    answer = llm.run_agent("Find booking CW-9999.", client, "fake-model")
+
+    assert answer == "Booking CW-9999 was not found."
+    assert client.interactions.create.call_count == 2
+    assert capsys.readouterr().out == ""
+
+    request = client.interactions.create.call_args_list[1].kwargs
+    assert request["previous_interaction_id"] == "interaction-1"
+
+    tool_result = request["input"][0]
+    assert tool_result["name"] == tool_name
+    assert tool_result["call_id"] == "call-1"
+    assert json.loads(tool_result["result"][0]["text"]) == {
+        "booking_id": "CW-9999",
+        "booking": None,
+        "error": "Booking not found.",
+    }
+
+
+def test_agent_sends_all_tool_results_from_one_model_response():
+    client = MagicMock(spec=genai.Client)
+    client.interactions.create.side_effect = [
+        Interaction(
+            id="interaction-1",
+            status="requires_action",
+            steps=[
+                FunctionCallStep(
+                    id="booking-call",
+                    name="get_booking",
+                    arguments={"booking_id": "CW-1002"},
+                ),
+                FunctionCallStep(
+                    id="refund-call",
+                    name="calculate_refund",
+                    arguments={"booking_id": "CW-1002"},
+                ),
+            ],
+        ),
+        Interaction(
+            id="interaction-2",
+            status="completed",
+            steps=[
+                ModelOutputStep(content=[TextContent(text="The refund is EUR 340.")])
+            ],
+        ),
+    ]
+
+    trace: list[llm.ToolTrace] = []
+    answer = llm.run_agent(
+        "Check CW-1002 and its refund.",
+        client,
+        "fake-model",
+        trace=trace,
+    )
+
+    assert answer == "The refund is EUR 340."
+    assert client.interactions.create.call_count == 2
+
+    request = client.interactions.create.call_args_list[1].kwargs
+    assert request["previous_interaction_id"] == "interaction-1"
+
+    results = request["input"]
+    assert len(results) == 2
+    assert [result["type"] for result in results] == [
+        "function_result",
+        "function_result",
+    ]
+    assert [result["call_id"] for result in results] == [
+        "booking-call",
+        "refund-call",
+    ]
+    assert [result["name"] for result in results] == [
+        "get_booking",
+        "calculate_refund",
+    ]
+
+    booking_payload = json.loads(results[0]["result"][0]["text"])
+    refund_payload = json.loads(results[1]["result"][0]["text"])
+
+    assert booking_payload["booking"]["id"] == "CW-1002"
+    assert booking_payload["error"] is None
+    assert refund_payload["booking"]["id"] == "CW-1002"
+    assert Decimal(refund_payload["refund"]) == Decimal(340)
+
+    assert [call["call_id"] for call in trace] == [
+        "booking-call",
+        "refund-call",
+    ]
+    assert [call["step"] for call in trace] == [1, 1]
+
+
+def test_agent_rejects_response_without_text_or_tool_calls():
+    client = MagicMock(spec=genai.Client)
+    client.interactions.create.return_value = Interaction(
+        id="interaction-1",
+        status="completed",
+        steps=[],
+    )
+
+    with pytest.raises(RuntimeError, match="neither text nor tool calls"):
+        llm.run_agent("Test question", client, "fake-model")
+
+    assert client.interactions.create.call_count == 1
+
+
+@pytest.mark.parametrize("question", ["", "   \t\n"])
+def test_agent_rejects_empty_question_before_calling_model(question):
+    client = make_fake_client(
+        "search_policies",
+        {"query": "unused"},
+        tool_calls=0,
+    )
+
+    with pytest.raises(ValueError, match="Question must not be empty"):
+        llm.run_agent(question, client, "fake-model")
+
+    client.interactions.create.assert_not_called()
+
+
+@pytest.mark.parametrize("max_steps", [0, -1])
+def test_agent_rejects_invalid_step_limit_before_calling_model(max_steps):
+    client = make_fake_client(
+        "search_policies",
+        {"query": "unused"},
+        tool_calls=0,
+    )
+
+    with pytest.raises(ValueError, match="max_steps must be positive"):
+        llm.run_agent(
+            "Test question",
+            client,
+            "fake-model",
+            max_steps=max_steps,
+        )
+
+    client.interactions.create.assert_not_called()
+
+
+def test_agent_does_not_execute_tools_without_budget_for_their_results(
+    monkeypatch, capsys
+):
+    client = make_fake_client(
+        "search_policies",
+        {"query": "open"},
+        tool_calls=1,
+        answer=None,
+    )
+    fake_dispatcher = MagicMock()
+    monkeypatch.setattr(llm, "execute_tool", fake_dispatcher)
+    trace: list[llm.ToolTrace] = []
+
+    answer = llm.run_agent(
+        "When are you open?",
+        client,
+        "fake-model",
+        max_steps=1,
+        trace=trace,
+    )
+
+    assert "step limit" in answer
+    assert "contact the staff" in answer
+    assert client.interactions.create.call_count == 1
+    fake_dispatcher.assert_not_called()
+    assert trace == []
+    assert capsys.readouterr().out == ""
