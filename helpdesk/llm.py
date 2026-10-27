@@ -168,7 +168,7 @@ def run_agent(
         tools=TOOLS,
         system_instruction=SYSTEM_INSTRUCTION,
         stream=False,
-        timeout=30.0,
+        timeout=None,
     )
 
     for step_index in range(max_steps):
@@ -241,7 +241,7 @@ def run_agent(
             tools=TOOLS,
             system_instruction=SYSTEM_INSTRUCTION,
             stream=False,
-            timeout=30.0,
+            timeout=None,
         )
 
     return (
@@ -264,7 +264,8 @@ def main() -> None:
         with genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
-                timeout=30_000,
+                timeout=None,
+                client_args={"timeout": None},
                 retry_options=types.HttpRetryOptions(attempts=0),
             ),
         ) as client:
