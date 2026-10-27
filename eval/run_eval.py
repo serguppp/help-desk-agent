@@ -13,15 +13,19 @@ from time import perf_counter
 from google import genai
 from google.genai import types
 
-from helpdesk.config import PROJECT_ROOT, QUESTIONS_PATH, TIME_NOW
+from helpdesk.config import (
+    MAX_STEPS,
+    PROJECT_ROOT,
+    QUESTIONS_PATH,
+    SCORER_VERSION,
+    TIME_NOW,
+)
 from helpdesk.llm import (
     SYSTEM_INSTRUCTION,
     InteractionsAPIError,
     ToolTrace,
     run_agent,
 )
-
-MAX_STEPS = 5
 
 MONEY = re.compile(
     r"(?:EUR\b|\u20ac)\s*(-?\d+(?:[.,]\d+)?)"
@@ -35,6 +39,25 @@ def amounts_in(answer: str) -> set[Decimal]:
         Decimal((match.group(1) or match.group(2)).replace(",", "."))
         for match in MONEY.finditer(answer.replace("*", ""))
     }
+
+
+def refund_amount_matches(answer: str, expected: Decimal) -> bool:
+    amounts = amounts_in(answer)
+    if expected in amounts:
+        return True
+
+    if expected != 0 or amounts:
+        return False
+
+    return bool(
+        re.search(
+            r"\b(?:no (?:further |new )?refunds? (?:is|are) (?:available|due)"
+            r"|nothing (?:is|will be) refunded"
+            r"|you (?:will receive|get) no (?:further |new )?refund)\b",
+            answer,
+            re.IGNORECASE,
+        )
+    )
 
 
 def check_answer(
@@ -72,7 +95,7 @@ def check_answer(
             "refund" in payload and Decimal(str(payload["refund"])) == expected
             for payload in payloads
         )
-        checks["amount_in_answer"] = expected in amounts_in(answer)
+        checks["amount_in_answer"] = refund_amount_matches(answer, expected)
 
     if "expected_status" in case:
         status = case["expected_status"]
@@ -123,6 +146,7 @@ def final_status(entry: dict) -> str:
 
 
 def write_report(report: dict, output_dir: Path) -> None:
+    report["metadata"]["scorer_version"] = SCORER_VERSION
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for entry in report["results"]:
@@ -146,6 +170,7 @@ def write_report(report: dict, output_dir: Path) -> None:
         "",
         f"- Model: {metadata['model']}",
         f"- Variant: {metadata['variant']}",
+        f"- Scorer version: {metadata['scorer_version']}",
         f"- Run time UTC: {metadata['run_time_utc']}",
         f"- Business time: {metadata['business_time']}",
         f"- Source commit: {metadata['commit']}",

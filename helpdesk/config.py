@@ -10,7 +10,8 @@ TIME_NOW = datetime.fromisoformat("2026-06-10T09:00:00+02:00")
 
 MAX_RESULTS = 3
 HEADING_WEIGHT = 3
-
+SCORER_VERSION = 2
+MAX_STEPS = 5
 STOP_WORDS = {
     "a",
     "an",

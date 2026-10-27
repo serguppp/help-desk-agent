@@ -326,3 +326,43 @@ def test_main_continues_after_timeout_and_saves_each_result(tmp_path, monkeypatc
     assert fake_agent.call_count == len(cases)
     fake_client.assert_called_once()
     assert all(call.kwargs["debug"] is False for call in fake_agent.call_args_list)
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected", "matches"),
+    [
+        ("No further refund is available.", "0", True),
+        ("No refund is due.", "0", True),
+        ("Nothing will be refunded.", "0", True),
+        ("You will receive no new refund.", "0", True),
+        ("The refund is EUR 0.00.", "0", True),
+        ("No further refund is available.", "340", False),
+        ("No refund is available. You will receive EUR 50.", "0", False),
+        ("The booking is cancelled.", "0", False),
+        ("The booking fee has no refund, but rental is refundable.", "0", False),
+    ],
+)
+def test_refund_amount_matches_zero_wording(answer, expected, matches):
+    assert run_eval.refund_amount_matches(answer, Decimal(expected)) is matches
+
+
+def test_zero_wording_still_requires_matching_refund_tool():
+    case = {
+        "expected_tool": "calculate_refund",
+        "expected_booking_id": "CW-1005",
+        "expected_amount_eur": "0",
+    }
+
+    checks = run_eval.check_answer(case, "No further refund is available.", [])
+
+    assert checks["amount_in_answer"]
+    assert not checks["refund_from_tool"]
+    assert not checks["expected_tool"]
+
+
+def test_report_records_scorer_version(tmp_path, sample_report):
+    run_eval.write_report(sample_report, tmp_path)
+
+    saved = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
+
+    assert saved["metadata"]["scorer_version"] == 2
