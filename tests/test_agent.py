@@ -540,3 +540,14 @@ def test_agent_can_read_document_after_empty_search(monkeypatch, tmp_path):
         "search_policies",
         "read_policy_document",
     ]
+
+
+@pytest.mark.parametrize("timeout", [None, 10.5])
+def test_shared_client_uses_consistent_timeout_units(timeout, monkeypatch):
+    monkeypatch.setattr(llm, "REQUEST_TIMEOUT_SECONDS", timeout)
+    factory = MagicMock()
+    monkeypatch.setattr(llm.genai, "Client", factory)
+    llm.create_client("fake-key")
+    options = factory.call_args.kwargs["http_options"]
+    assert options.timeout == (10500 if timeout is not None else None)
+    assert options.client_args["timeout"] == timeout

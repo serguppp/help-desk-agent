@@ -11,19 +11,23 @@ from pathlib import Path
 from time import perf_counter
 
 from google import genai
-from google.genai import types
 
 from helpdesk.config import (
+    DEFAULT_EVALUATION_VARIANT,
+    EVALUATION_STATUSES,
     MAX_STEPS,
     PROJECT_ROOT,
     QUESTIONS_PATH,
+    REQUEST_TIMEOUT_SECONDS,
     SCORER_VERSION,
+    STEP_LIMIT_MESSAGE,
     TIME_NOW,
 )
 from helpdesk.llm import (
     SYSTEM_INSTRUCTION,
     InteractionsAPIError,
     ToolTrace,
+    create_client,
     run_agent,
 )
 
@@ -67,9 +71,7 @@ def check_answer(
 ) -> dict[str, bool]:
     checks = {
         "nonempty_answer": bool(answer.strip()),
-        "within_step_limit": not answer.startswith(
-            "Unable to complete the request within the step limit."
-        ),
+        "within_step_limit": not answer.startswith(STEP_LIMIT_MESSAGE),
     }
 
     calls = trace
@@ -181,7 +183,7 @@ def write_report(report: dict, output_dir: Path) -> None:
         "| --- | ---: |",
     ]
 
-    for status in ("PASS", "FAIL", "MANUAL_REVIEW", "ERROR"):
+    for status in EVALUATION_STATUSES:
         lines.append(f"| {status} | {counts[status]} |")
 
     lines.extend(
@@ -225,7 +227,7 @@ def write_report(report: dict, output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--variant", default="current")
+    parser.add_argument("--variant", default=DEFAULT_EVALUATION_VARIANT)
     parser.add_argument("--model", help="Override GEMINI_MODEL for this run")
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "eval")
     parser.add_argument("--report-only", action="store_true")
@@ -278,7 +280,7 @@ def main() -> None:
 
     report: dict = {
         "metadata": {
-            "request_timeout_seconds": None,
+            "request_timeout_seconds": REQUEST_TIMEOUT_SECONDS,
             "model": model,
             "sdk_version": genai.__version__,
             "variant": args.variant,
@@ -294,14 +296,7 @@ def main() -> None:
         "results": [],
     }
 
-    with genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(
-            timeout=None,
-            client_args={"timeout": None},
-            retry_options=types.HttpRetryOptions(attempts=0),
-        ),
-    ) as client:
+    with create_client(api_key) as client:
         for index, case in enumerate(cases, start=1):
             print(f"[{index}/{len(cases)}] {case['id']}", flush=True)
             trace: list[ToolTrace] = []

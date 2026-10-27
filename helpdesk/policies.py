@@ -1,18 +1,14 @@
 import re
 from typing import TypedDict
 
-from .config import HEADING_WEIGHT, MAX_RESULTS, POLICIES_PATH, STOP_WORDS
-
-TOKEN_ALIASES = {
-    "bikes": "bike",
-    "buy": "sell",
-    "purchase": "sell",
-    "sales": "sell",
-    "payment": "pay",
-    "payments": "pay",
-}
-
-POLICY_DOCUMENT_NAMES = ("faq.md", "prices.md", "cancellations.md")
+from .config import (
+    HEADING_WEIGHT,
+    MAX_RESULTS,
+    POLICIES_PATH,
+    POLICY_DOCUMENT_NAMES,
+    STOP_WORDS,
+    TOKEN_ALIASES,
+)
 
 
 class PolicyDocument(TypedDict):
@@ -20,14 +16,14 @@ class PolicyDocument(TypedDict):
     text: str
 
 
-class PolicySections(TypedDict):
+class PolicySection(TypedDict):
     source: str
     heading: str
     text: str
 
 
-def split_sections(file_name: str, text: str) -> list[PolicySections]:
-    sections: list[PolicySections] = []
+def split_sections(file_name: str, text: str) -> list[PolicySection]:
+    sections: list[PolicySection] = []
     heading = ""
     text_lines: list[str] = []
 
@@ -37,7 +33,7 @@ def split_sections(file_name: str, text: str) -> list[PolicySections]:
 
             if heading and section_text:
                 sections.append(
-                    PolicySections(
+                    PolicySection(
                         source=file_name,
                         heading=heading,
                         text=section_text,
@@ -53,7 +49,7 @@ def split_sections(file_name: str, text: str) -> list[PolicySections]:
 
     if heading and section_text:
         sections.append(
-            PolicySections(
+            PolicySection(
                 source=file_name,
                 heading=heading,
                 text=section_text,
@@ -80,10 +76,10 @@ def load_policies() -> list[PolicyDocument]:
 
 def tokenize(text: str) -> set[str]:
     tokens = set(re.findall(r"[a-z0-9]+", text.casefold())) - STOP_WORDS
-    return {TOKEN_ALIASES.get(token, token) or token for token in tokens}
+    return {TOKEN_ALIASES.get(token, token) for token in tokens}
 
 
-def search_policies(query: str) -> list[PolicySections]:
+def search_policies(query: str) -> list[PolicySection]:
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be a non-empty string")
 
@@ -91,12 +87,12 @@ def search_policies(query: str) -> list[PolicySections]:
     if not query_tokens:
         return []
 
-    sections: list[PolicySections] = []
+    sections: list[PolicySection] = []
     documents: list[PolicyDocument] = load_policies()
     for document in documents:
         sections.extend(split_sections(document["source"], document["text"]))
 
-    ranked: list[tuple[int, PolicySections]] = []
+    ranked: list[tuple[int, PolicySection]] = []
 
     for section in sections:
         heading_tokens = tokenize(section["heading"])

@@ -17,8 +17,16 @@ from google.genai.interactions import (
 )
 
 from .booking import get_booking
-from .config import TIME_NOW
-from .policies import POLICY_DOCUMENT_NAMES, read_policy_document, search_policies
+from .config import (
+    MAX_STEPS,
+    POLICY_DOCUMENT_NAMES,
+    REQUEST_TIMEOUT_SECONDS,
+    SDK_RETRY_ATTEMPTS,
+    STEP_LIMIT_MESSAGE,
+    TIME_NOW,
+    TOOL_ARGUMENT_NAMES,
+)
+from .policies import read_policy_document, search_policies
 from .refund import calculate_refund
 
 
@@ -153,16 +161,10 @@ SYSTEM_INSTRUCTION = (
 
 
 def execute_tool(name: str, arguments: dict[str, object]) -> object:
-    argument_names = {
-        "search_policies": "query",
-        "get_booking": "booking_id",
-        "calculate_refund": "booking_id",
-        "read_policy_document": "file_name",
-    }
-    if name not in argument_names:
+    if name not in TOOL_ARGUMENT_NAMES:
         return {"error": "unknown_tool"}
 
-    argument_name = argument_names[name]
+    argument_name = TOOL_ARGUMENT_NAMES[name]
     value = arguments.get(argument_name)
 
     if (
@@ -203,7 +205,7 @@ def run_agent(
     question: str,
     client: genai.Client,
     model: str,
-    max_steps: int = 5,
+    max_steps: int = MAX_STEPS,
     debug: bool = False,
     trace: list[ToolTrace] | None = None,
 ) -> str:
@@ -219,7 +221,7 @@ def run_agent(
         tools=TOOLS,
         system_instruction=SYSTEM_INSTRUCTION,
         stream=False,
-        timeout=None,
+        timeout=REQUEST_TIMEOUT_SECONDS,
     )
 
     for step_index in range(max_steps):
@@ -292,12 +294,25 @@ def run_agent(
             tools=TOOLS,
             system_instruction=SYSTEM_INSTRUCTION,
             stream=False,
-            timeout=None,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
 
-    return (
-        "Unable to complete the request within the step limit. "
-        "Please contact the staff."
+    return STEP_LIMIT_MESSAGE
+
+
+def create_client(api_key: str) -> genai.Client:
+    timeout_ms = (
+        int(REQUEST_TIMEOUT_SECONDS * 1000)
+        if REQUEST_TIMEOUT_SECONDS is not None
+        else None
+    )
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=timeout_ms,
+            client_args={"timeout": REQUEST_TIMEOUT_SECONDS},
+            retry_options=types.HttpRetryOptions(attempts=SDK_RETRY_ATTEMPTS),
+        ),
     )
 
 
@@ -312,14 +327,7 @@ def main() -> None:
         raise SystemExit("GEMINI_MODEL is not configured")
 
     try:
-        with genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(
-                timeout=None,
-                client_args={"timeout": None},
-                retry_options=types.HttpRetryOptions(attempts=0),
-            ),
-        ) as client:
+        with create_client(api_key) as client:
             while True:
                 question = input("You: ").strip()
 
@@ -345,7 +353,7 @@ def main() -> None:
                         "Agent: CityWheels data could not be read. Please contact the staff."
                     )
 
-                except RuntimeError:
+                except (RuntimeError, TypeError):
                     print(
                         "Agent: The assistant could not complete the request. Please try again or contact the staff."
                     )

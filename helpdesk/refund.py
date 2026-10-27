@@ -1,15 +1,15 @@
-from datetime import timedelta
 from decimal import Decimal
 from typing import TypedDict
 
 from .booking import Booking, BookingInfo, get_booking
-from .config import TIME_NOW
-
-RENTAL_REFUND_METHODS = {
-    "card": "Same card within 5 working days.",
-    "voucher": "New voucher, never money.",
-}
-POLICY_SOURCE = "data/policies/cancellations.md"
+from .config import (
+    FULL_REFUND_NOTICE,
+    HALF_REFUND_NOTICE,
+    HALF_REFUND_RATE,
+    REFUND_POLICY_SOURCE,
+    RENTAL_REFUND_METHODS,
+    TIME_NOW,
+)
 
 
 class RefundResult(TypedDict):
@@ -41,7 +41,7 @@ def calculate_refund(booking_id: str) -> BookingInfo | RefundResult:
             refund=Decimal(0),
             rental_refund_method=None,
             deposit_refund_method=None,
-            policy_source=POLICY_SOURCE,
+            policy_source=REFUND_POLICY_SOURCE,
             message=f"You cannot cancel booking with status {booking['status']}.",
         )
 
@@ -50,10 +50,10 @@ def calculate_refund(booking_id: str) -> BookingInfo | RefundResult:
         raise ValueError(f"Unsupported payment method: {payment_method}")
 
     remaining_time = booking["start"] - TIME_NOW
-    if remaining_time >= timedelta(hours=48):
+    if remaining_time >= FULL_REFUND_NOTICE:
         refund_rate = Decimal(1)
-    elif remaining_time >= timedelta(hours=24):
-        refund_rate = Decimal("0.5")
+    elif remaining_time >= HALF_REFUND_NOTICE:
+        refund_rate = HALF_REFUND_RATE
     else:
         refund_rate = Decimal(0)
 
@@ -73,6 +73,6 @@ def calculate_refund(booking_id: str) -> BookingInfo | RefundResult:
         deposit_refund_method=(
             "Original deposit payment method." if deposit_refund > 0 else None
         ),
-        policy_source=POLICY_SOURCE,
+        policy_source=REFUND_POLICY_SOURCE,
         message=None,
     )

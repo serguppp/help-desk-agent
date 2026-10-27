@@ -45,6 +45,7 @@ def fake_cli_client(monkeypatch):
         (KeyError("start"), "CityWheels data could not be read"),
         (InvalidOperation(), "CityWheels data could not be read"),
         (RuntimeError("empty response"), "The assistant could not complete"),
+        (TypeError("unexpected model response"), "The assistant could not complete"),
     ],
 )
 def test_cli_continues_after_error(

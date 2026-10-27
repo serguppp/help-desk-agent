@@ -195,7 +195,7 @@ def compare_reports(reports: dict[str, dict]) -> str:
             "- B changes from 39/45 to 40/45 after recognizing a zero refund expressed in words. This corrects the evaluator, not the agent.",
             "- The original 22-question run and the new 15-question holdout are separate datasets. Do not compare their percentages directly with the 45-question development set.",
             "- The D model comparisons have matching recorded prompts, SDK, business time and request budget. Check the configuration table before attributing differences to a model.",
-            "- Both D models score 43/45 on development questions and 14/15 on holdout questions, but fail different cases. There is no quality winner from these single runs.",
+            "- Compare final scores and failure IDs above; a newer model name does not establish a quality advantage.",
             "- On the 45-question set, D 3.5 fails the cat step limit and the unusual payment question. D 3.8 fails the cat step limit and adds an unsupported universal Revolut-card acceptance claim.",
             "- On holdout, 3.5 incorrectly asserts that no student rate exists; 3.8 reaches the step limit on phone holders. These show that reading the full document does not guarantee correct reasoning or stopping.",
             "",
